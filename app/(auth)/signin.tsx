@@ -13,6 +13,9 @@ import { Controller, useForm } from 'react-hook-form';
 import {
     ActivityIndicator,
     Image,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
     StyleSheet,
     TextInput,
     TouchableOpacity,
@@ -110,127 +113,139 @@ export default function SignInScreen() {
     const styles = getStyles(colors);
 
     return (
-        <Container style={styles.container}>
-            <View style={styles.scrollContent}>
-                {/* Logo */}
-                <View style={styles.logoContainer}>
-                    <Image
-                        style={{ width: 120, height: 120, resizeMode: 'contain' }}
-                        source={require('@/assets/images/logo.png')}
-                    />
-                </View>
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+            <Container style={styles.container}>
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={styles.scrollContent}
+                >
+                    <View style={styles.scrollContent}>
+                        {/* Logo */}
+                        <View style={styles.logoContainer}>
+                            <Image
+                                style={{ width: 120, height: 120, resizeMode: 'contain' }}
+                                source={require('@/assets/images/logo.png')}
+                            />
+                        </View>
 
-                {/* Header Text */}
-                <View style={styles.headerContainer}>
-                    <Text style={styles.title}>Welcome Back</Text>
-                    <Text style={styles.subtitle}>
-                        Sign in to access your courses, notices, and academic resources
-                    </Text>
-                </View>
+                        {/* Header Text */}
+                        <View style={styles.headerContainer}>
+                            <Text style={styles.title}>Welcome Back</Text>
+                            <Text style={styles.subtitle}>
+                                Sign in to access your courses, notices, and academic resources
+                            </Text>
+                        </View>
 
-                {/* Main Content */}
-                <View style={styles.mainContent}>
-                    {/* Error Card */}
-                    {error && (
-                        <Card style={styles.errorCard}>
-                            <CardDescription style={styles.errorText}>
-                                {error}
-                            </CardDescription>
-                        </Card>
-                    )}
-
-                    {/* Email Input */}
-                    <View style={styles.inputContainer}>
-                        <Text style={styles.label}>Email</Text>
-                        <Controller
-                            control={control}
-                            name="email"
-                            rules={{
-                                required: 'Email is required',
-                                pattern: {
-                                    value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                                    message: 'Invalid email address'
-                                }
-                            }}
-                            render={({ field: { onChange, onBlur, value } }) => (
-                                <TextInput
-                                    style={[
-                                        styles.input,
-                                        errors.email && styles.inputError
-                                    ]}
-                                    placeholder="your.email@cuet.ac.bd"
-                                    placeholderTextColor={colors.mutedForeground}
-                                    onBlur={onBlur}
-                                    onChangeText={onChange}
-                                    value={value}
-                                    autoCapitalize="none"
-                                    keyboardType="email-address"
-                                    editable={!loading}
-                                />
+                        {/* Main Content */}
+                        <View style={styles.mainContent}>
+                            {/* Error Card */}
+                            {error && (
+                                <Card style={styles.errorCard}>
+                                    <CardDescription style={styles.errorText}>
+                                        {error}
+                                    </CardDescription>
+                                </Card>
                             )}
-                        />
-                        {errors.email && (
-                            <Text style={styles.errorMessage}>{errors.email.message}</Text>
-                        )}
-                    </View>
 
-                    {/* Password Input */}
-                    <View style={styles.inputContainer}>
-                        <Text style={styles.label}>Password</Text>
-                        <Controller
-                            control={control}
-                            name="password"
-                            rules={{
-                                required: 'Password is required',
-                                minLength: {
-                                    value: 6,
-                                    message: 'Password must be at least 6 characters'
-                                }
-                            }}
-                            render={({ field: { onChange, onBlur, value } }) => (
-                                <TextInput
-                                    style={[
-                                        styles.input,
-                                        errors.password && styles.inputError
-                                    ]}
-                                    placeholder="Enter your password"
-                                    placeholderTextColor={colors.mutedForeground}
-                                    onBlur={onBlur}
-                                    onChangeText={onChange}
-                                    value={value}
-                                    secureTextEntry
-                                    editable={!loading}
+                            {/* Email Input */}
+                            <View style={styles.inputContainer}>
+                                <Text style={styles.label}>Email</Text>
+                                <Controller
+                                    control={control}
+                                    name="email"
+                                    rules={{
+                                        required: 'Email is required',
+                                        pattern: {
+                                            value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                                            message: 'Invalid email address'
+                                        }
+                                    }}
+                                    render={({ field: { onChange, onBlur, value } }) => (
+                                        <TextInput
+                                            style={[
+                                                styles.input,
+                                                errors.email && styles.inputError
+                                            ]}
+                                            placeholder="your.email@cuet.ac.bd"
+                                            placeholderTextColor={colors.mutedForeground}
+                                            onBlur={onBlur}
+                                            onChangeText={onChange}
+                                            value={value}
+                                            autoCapitalize="none"
+                                            keyboardType="email-address"
+                                            editable={!loading}
+                                        />
+                                    )}
                                 />
-                            )}
-                        />
-                        {errors.password && (
-                            <Text style={styles.errorMessage}>{errors.password.message}</Text>
-                        )}
-                    </View>
+                                {errors.email && (
+                                    <Text style={styles.errorMessage}>{errors.email.message}</Text>
+                                )}
+                            </View>
 
-                    {/* Sign In Button */}
-                    <Button
-                        onPress={handleSubmit(onSubmit)}
-                        activeOpacity={0.7}
-                        disabled={loading}
-                        loading={loading}
-                    >
-                        Sign In
-                    </Button>
-                    {/* Navigate to Sign Up */}
-                    <TouchableOpacity
-                        onPress={() => router.push('/signup')}
-                        style={styles.toggleContainer}
-                        disabled={loading}
-                    >
-                        <Text style={styles.toggleText}>
-                            Don't have an account?{' '}
-                            <Text style={styles.toggleLink}>Sign Up</Text>
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </Container>
+                            {/* Password Input */}
+                            <View style={styles.inputContainer}>
+                                <Text style={styles.label}>Password</Text>
+                                <Controller
+                                    control={control}
+                                    name="password"
+                                    rules={{
+                                        required: 'Password is required',
+                                        minLength: {
+                                            value: 6,
+                                            message: 'Password must be at least 6 characters'
+                                        }
+                                    }}
+                                    render={({ field: { onChange, onBlur, value } }) => (
+                                        <TextInput
+                                            style={[
+                                                styles.input,
+                                                errors.password && styles.inputError
+                                            ]}
+                                            placeholder="Enter your password"
+                                            placeholderTextColor={colors.mutedForeground}
+                                            onBlur={onBlur}
+                                            onChangeText={onChange}
+                                            value={value}
+                                            secureTextEntry
+                                            editable={!loading}
+                                        />
+                                    )}
+                                />
+                                {errors.password && (
+                                    <Text style={styles.errorMessage}>{errors.password.message}</Text>
+                                )}
+                            </View>
+
+                            {/* Sign In Button */}
+                            <Button
+                                onPress={handleSubmit(onSubmit)}
+                                activeOpacity={0.7}
+                                disabled={loading}
+                                loading={loading}
+                            >
+                                Sign In
+                            </Button>
+                            {/* Navigate to Sign Up */}
+                            <TouchableOpacity
+                                onPress={() => router.push('/signup')}
+                                style={styles.toggleContainer}
+                                disabled={loading}
+                            >
+                                <Text style={styles.toggleText}>
+                                    Don't have an account?{' '}
+                                    <Text style={styles.toggleLink}>Sign Up</Text>
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </ScrollView>
+            </Container>
+        </KeyboardAvoidingView>
     );
 }
 

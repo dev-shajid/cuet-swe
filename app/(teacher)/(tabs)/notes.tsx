@@ -130,7 +130,7 @@ export default function NotesScreen() {
     };
 
     return (
-        <Container>
+        <Container useSafeArea={false}>
             <ScreenHeader 
                 title="Notes & Tasks"
                 subtitle={`${stats.pending} pending`}

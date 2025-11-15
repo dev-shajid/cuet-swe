@@ -21,6 +21,12 @@ export default function StudentTabNavigator() {
             icon_unfocused: 'home-outline',
         },
         {
+            name: 'courses',
+            label: 'Courses',
+            icon_focused: 'book',
+            icon_unfocused: 'book-outline',
+        },
+        {
             name: 'profile',
             label: 'Profile',
             icon_focused: 'person',

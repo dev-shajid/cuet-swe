@@ -1,13 +1,16 @@
 import { db } from '@/config/firebase.config';
-import { AppUser } from '@/types/user.type';
+import { AppUser } from '@/types';
 import { getRole } from '@/utils/role';
+import { extractStudentIdFromEmail } from '@/utils/studentId';
 import { User } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { Timestamp, doc, getDoc, setDoc } from 'firebase/firestore';
 
+// Persist user profile using email as the document ID.
+// Email is the sole unique identifier across the app.
 export const saveUserToFirestore = async (user: User): Promise<AppUser | null> => {
     try {
-        if (!user?.uid || !user?.email) {
-            console.log('❌ No uid or email provided');
+        if (!user?.email) {
+            console.log('❌ No email provided');
             return null;
         }
 
@@ -26,19 +29,25 @@ export const saveUserToFirestore = async (user: User): Promise<AppUser | null> =
 
         if (!userSnap.exists()) {
             let newUserData: any = {
-                uid: user.uid,
                 email: user.email,
                 name: user.displayName || '',
                 image: user.photoURL || '',
                 role,
-                createdAt: new Date().toISOString(),
+                createdAt: Timestamp.now(),
             };
 
             if (role === 'teacher') {
                 newUserData['department'] = 'CSE';
             } else {
-                newUserData['batch'] = '2025';
+                // Student specific fields
+                newUserData['batch'] = '2021';
                 newUserData['department'] = 'CSE';
+                const extractedId = extractStudentIdFromEmail(user.email);
+                if (extractedId) {
+                    newUserData['studentId'] = extractedId;
+                } else {
+                    console.warn('⚠️ Could not extract studentId from email:', user.email);
+                }
             }
 
             await setDoc(userRef, newUserData);

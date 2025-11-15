@@ -13,6 +13,8 @@ import { Controller, useForm } from 'react-hook-form';
 import {
     ActivityIndicator,
     Image,
+    KeyboardAvoidingView,
+    Platform,
     ScrollView,
     StyleSheet,
     TextInput,
@@ -20,7 +22,7 @@ import {
     View
 } from 'react-native';
 
-interface SignUpFormData {
+export interface SignUpFormData {
     name: string;
     email: string;
     password: string;
@@ -123,201 +125,211 @@ export default function SignUpScreen() {
     const styles = getStyles(colors);
 
     return (
-        <Container>
-            <ScrollView showsVerticalScrollIndicator={false}>
-                <View style={styles.scrollContent}>
-                    {/* Logo */}
-                    <View style={styles.logoContainer}>
-                        <Image
-                            style={{ width: 100, height: 100, resizeMode: 'contain' }}
-                            source={require('@/assets/images/logo.png')}
-                        />
-                    </View>
-
-                    {/* Header Text */}
-                    <View style={styles.headerContainer}>
-                        <Text style={styles.title}>Create Account</Text>
-                        <Text style={styles.subtitle}>
-                            Sign up to get started with your courses and academic resources
-                        </Text>
-                    </View>
-
-                    {/* Main Content */}
-                    <View style={styles.mainContent}>
-                        {/* Error Card */}
-                        {error && (
-                            <Card style={styles.errorCard}>
-                                <CardDescription style={styles.errorText}>
-                                    {error}
-                                </CardDescription>
-                            </Card>
-                        )}
-
-                        {/* Name Input */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Full Name</Text>
-                            <Controller
-                                control={control}
-                                name="name"
-                                rules={{
-                                    required: 'Name is required',
-                                    minLength: {
-                                        value: 2,
-                                        message: 'Name must be at least 2 characters'
-                                    },
-                                    pattern: {
-                                        value: /^[a-zA-Z\s]+$/,
-                                        message: 'Name can only contain letters and spaces'
-                                    }
-                                }}
-                                render={({ field: { onChange, onBlur, value } }) => (
-                                    <TextInput
-                                        style={[
-                                            styles.input,
-                                            errors.name && styles.inputError
-                                        ]}
-                                        placeholder="Enter your full name"
-                                        placeholderTextColor={colors.mutedForeground}
-                                        onBlur={onBlur}
-                                        onChangeText={onChange}
-                                        value={value}
-                                        autoCapitalize="words"
-                                        editable={!loading}
-                                    />
-                                )}
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+            <Container>
+                <ScrollView
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={styles.scrollContent}
+                >
+                    <View style={styles.scrollContent}>
+                        {/* Logo */}
+                        <View style={styles.logoContainer}>
+                            <Image
+                                style={{ width: 100, height: 100, resizeMode: 'contain' }}
+                                source={require('@/assets/images/logo.png')}
                             />
-                            {errors.name && (
-                                <Text style={styles.errorMessage}>{errors.name.message}</Text>
-                            )}
                         </View>
 
-                        {/* Email Input */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Email</Text>
-                            <Controller
-                                control={control}
-                                name="email"
-                                rules={{
-                                    required: 'Email is required',
-                                    pattern: {
-                                        value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                                        message: 'Invalid email address'
-                                    }
-                                }}
-                                render={({ field: { onChange, onBlur, value } }) => (
-                                    <TextInput
-                                        style={[
-                                            styles.input,
-                                            errors.email && styles.inputError
-                                        ]}
-                                        placeholder="your.email@cuet.ac.bd"
-                                        placeholderTextColor={colors.mutedForeground}
-                                        onBlur={onBlur}
-                                        onChangeText={onChange}
-                                        value={value}
-                                        autoCapitalize="none"
-                                        keyboardType="email-address"
-                                        editable={!loading}
-                                    />
-                                )}
-                            />
-                            {errors.email && (
-                                <Text style={styles.errorMessage}>{errors.email.message}</Text>
-                            )}
-                        </View>
-
-                        {/* Password Input */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Password</Text>
-                            <Controller
-                                control={control}
-                                name="password"
-                                rules={{
-                                    required: 'Password is required',
-                                    minLength: {
-                                        value: 6,
-                                        message: 'Password must be at least 6 characters'
-                                    }
-                                }}
-                                render={({ field: { onChange, onBlur, value } }) => (
-                                    <TextInput
-                                        style={[
-                                            styles.input,
-                                            errors.password && styles.inputError
-                                        ]}
-                                        placeholder="Create a password"
-                                        placeholderTextColor={colors.mutedForeground}
-                                        onBlur={onBlur}
-                                        onChangeText={onChange}
-                                        value={value}
-                                        secureTextEntry
-                                        editable={!loading}
-                                    />
-                                )}
-                            />
-                            {errors.password && (
-                                <Text style={styles.errorMessage}>{errors.password.message}</Text>
-                            )}
-                        </View>
-
-                        {/* Confirm Password Input */}
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Confirm Password</Text>
-                            <Controller
-                                control={control}
-                                name="confirmPassword"
-                                rules={{
-                                    required: 'Please confirm your password',
-                                    validate: (value) =>
-                                        value === password || 'Passwords do not match'
-                                }}
-                                render={({ field: { onChange, onBlur, value } }) => (
-                                    <TextInput
-                                        style={[
-                                            styles.input,
-                                            errors.confirmPassword && styles.inputError
-                                        ]}
-                                        placeholder="Confirm your password"
-                                        placeholderTextColor={colors.mutedForeground}
-                                        onBlur={onBlur}
-                                        onChangeText={onChange}
-                                        value={value}
-                                        secureTextEntry
-                                        editable={!loading}
-                                    />
-                                )}
-                            />
-                            {errors.confirmPassword && (
-                                <Text style={styles.errorMessage}>
-                                    {errors.confirmPassword.message}
-                                </Text>
-                            )}
-                        </View>
-
-                        <Button
-                            onPress={handleSubmit(onSubmit)}
-                            activeOpacity={0.7}
-                            disabled={loading}
-                            loading={loading}
-                        >
-                            Sign Up
-                        </Button>
-
-                        {/* Navigate to Sign In */}
-                        <TouchableOpacity
-                            onPress={() => router.back()}
-                            style={styles.toggleContainer}
-                            disabled={loading}
-                        >
-                            <Text style={styles.toggleText}>
-                                Already have an account?{' '}
-                                <Text style={styles.toggleLink}>Sign In</Text>
+                        {/* Header Text */}
+                        <View style={styles.headerContainer}>
+                            <Text style={styles.title}>Create Account</Text>
+                            <Text style={styles.subtitle}>
+                                Sign up to get started with your courses and academic resources
                             </Text>
-                        </TouchableOpacity>
+                        </View>
+
+                        {/* Main Content */}
+                        <View style={styles.mainContent}>
+                            {/* Error Card */}
+                            {error && (
+                                <Card style={styles.errorCard}>
+                                    <CardDescription style={styles.errorText}>
+                                        {error}
+                                    </CardDescription>
+                                </Card>
+                            )}
+
+                            {/* Name Input */}
+                            <View style={styles.inputContainer}>
+                                <Text style={styles.label}>Full Name</Text>
+                                <Controller
+                                    control={control}
+                                    name="name"
+                                    rules={{
+                                        required: 'Name is required',
+                                        minLength: {
+                                            value: 2,
+                                            message: 'Name must be at least 2 characters'
+                                        },
+                                        pattern: {
+                                            value: /^[a-zA-Z\s]+$/,
+                                            message: 'Name can only contain letters and spaces'
+                                        }
+                                    }}
+                                    render={({ field: { onChange, onBlur, value } }) => (
+                                        <TextInput
+                                            style={[
+                                                styles.input,
+                                                errors.name && styles.inputError
+                                            ]}
+                                            placeholder="Enter your full name"
+                                            placeholderTextColor={colors.mutedForeground}
+                                            onBlur={onBlur}
+                                            onChangeText={onChange}
+                                            value={value}
+                                            autoCapitalize="words"
+                                            editable={!loading}
+                                        />
+                                    )}
+                                />
+                                {errors.name && (
+                                    <Text style={styles.errorMessage}>{errors.name.message}</Text>
+                                )}
+                            </View>
+
+                            {/* Email Input */}
+                            <View style={styles.inputContainer}>
+                                <Text style={styles.label}>Email</Text>
+                                <Controller
+                                    control={control}
+                                    name="email"
+                                    rules={{
+                                        required: 'Email is required',
+                                        pattern: {
+                                            value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                                            message: 'Invalid email address'
+                                        }
+                                    }}
+                                    render={({ field: { onChange, onBlur, value } }) => (
+                                        <TextInput
+                                            style={[
+                                                styles.input,
+                                                errors.email && styles.inputError
+                                            ]}
+                                            placeholder="your.email@cuet.ac.bd"
+                                            placeholderTextColor={colors.mutedForeground}
+                                            onBlur={onBlur}
+                                            onChangeText={onChange}
+                                            value={value}
+                                            autoCapitalize="none"
+                                            keyboardType="email-address"
+                                            editable={!loading}
+                                        />
+                                    )}
+                                />
+                                {errors.email && (
+                                    <Text style={styles.errorMessage}>{errors.email.message}</Text>
+                                )}
+                            </View>
+
+                            {/* Password Input */}
+                            <View style={styles.inputContainer}>
+                                <Text style={styles.label}>Password</Text>
+                                <Controller
+                                    control={control}
+                                    name="password"
+                                    rules={{
+                                        required: 'Password is required',
+                                        minLength: {
+                                            value: 6,
+                                            message: 'Password must be at least 6 characters'
+                                        }
+                                    }}
+                                    render={({ field: { onChange, onBlur, value } }) => (
+                                        <TextInput
+                                            style={[
+                                                styles.input,
+                                                errors.password && styles.inputError
+                                            ]}
+                                            placeholder="Create a password"
+                                            placeholderTextColor={colors.mutedForeground}
+                                            onBlur={onBlur}
+                                            onChangeText={onChange}
+                                            value={value}
+                                            secureTextEntry
+                                            editable={!loading}
+                                        />
+                                    )}
+                                />
+                                {errors.password && (
+                                    <Text style={styles.errorMessage}>{errors.password.message}</Text>
+                                )}
+                            </View>
+
+                            {/* Confirm Password Input */}
+                            <View style={styles.inputContainer}>
+                                <Text style={styles.label}>Confirm Password</Text>
+                                <Controller
+                                    control={control}
+                                    name="confirmPassword"
+                                    rules={{
+                                        required: 'Please confirm your password',
+                                        validate: (value) =>
+                                            value === password || 'Passwords do not match'
+                                    }}
+                                    render={({ field: { onChange, onBlur, value } }) => (
+                                        <TextInput
+                                            style={[
+                                                styles.input,
+                                                errors.confirmPassword && styles.inputError
+                                            ]}
+                                            placeholder="Confirm your password"
+                                            placeholderTextColor={colors.mutedForeground}
+                                            onBlur={onBlur}
+                                            onChangeText={onChange}
+                                            value={value}
+                                            secureTextEntry
+                                            editable={!loading}
+                                        />
+                                    )}
+                                />
+                                {errors.confirmPassword && (
+                                    <Text style={styles.errorMessage}>
+                                        {errors.confirmPassword.message}
+                                    </Text>
+                                )}
+                            </View>
+
+                            <Button
+                                onPress={handleSubmit(onSubmit)}
+                                activeOpacity={0.7}
+                                disabled={loading}
+                                loading={loading}
+                            >
+                                Sign Up
+                            </Button>
+
+                            {/* Navigate to Sign In */}
+                            <TouchableOpacity
+                                onPress={() => router.back()}
+                                style={styles.toggleContainer}
+                                disabled={loading}
+                            >
+                                <Text style={styles.toggleText}>
+                                    Already have an account?{' '}
+                                    <Text style={styles.toggleLink}>Sign In</Text>
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
-                </View>
-            </ScrollView>
-        </Container>
+                </ScrollView>
+            </Container>
+        </KeyboardAvoidingView>
     );
 }
 

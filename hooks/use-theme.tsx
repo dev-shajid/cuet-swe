@@ -108,7 +108,7 @@ const lightColors: ColorScheme = {
     shadow2xl: "0px 1px 3px 0px hsl(0 0% 0% / 0.43)",
     trackingNormal: "0.025em",
     spacing: "0.25rem",
-    tabBackground: "#eff6ff",
+    tabBackground: "#fafcff",
     tabInactiveColor: "#525252",
     tabActiveColor: "#020202ff",
     tabBorder: "#e0e7ff",
@@ -167,7 +167,7 @@ const darkColors: ColorScheme = {
     shadow2xl: "0px 1px 3px 0px hsl(0 0% 0% / 0.43)",
     trackingNormal: "0.025em",
     spacing: "0.25rem",
-    tabBackground: "#050c1dff",
+    tabBackground: "#020306",
     tabInactiveColor: "#a9a9a9",
     tabActiveColor: "#ffffff",
     tabBorder: "#1e293bff"
