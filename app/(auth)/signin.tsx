@@ -6,7 +6,8 @@ import { auth } from '@/config/firebase.config';
 import { useAuth } from '@/hooks/use-auth';
 import { ColorScheme, useTheme } from '@/hooks/use-theme';
 import { getRole } from '@/utils/role';
-import { signInWithEmailAndPassword } from '@firebase/auth';
+import { GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword } from '@firebase/auth';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -29,7 +30,7 @@ interface SignInFormData {
 
 export default function SignInScreen() {
     const { colors } = useTheme();
-    const { session } = useAuth();
+    const { session, signOut } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -39,6 +40,66 @@ export default function SignInScreen() {
             password: '',
         }
     });
+
+    const signInWithGoogle = async () => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+
+            const googleUser = await GoogleSignin.signIn();
+
+            if (!googleUser.data?.idToken) {
+                throw new Error('Failed to get authentication token. Please try again.');
+            }
+
+            const googleCredential = GoogleAuthProvider.credential(googleUser.data.idToken);
+            const userCredential = await signInWithCredential(auth, googleCredential);
+            const email = userCredential.user.email;
+
+            if (!email) {
+                setError('Email not found in your account.');
+                await signOut();
+                setLoading(false);
+                return;
+            }
+
+            const role = getRole(email);
+            if (!role) {
+                setError('Access denied. Only CUET students or teachers are allowed.');
+                await signOut();
+                setLoading(false);
+                return;
+            }
+
+            console.log('✅ Google login successful:', email);
+            console.log('⏳ Waiting for auth state change listener to set session...');
+        } catch (err: any) {
+            console.log('❌ Google sign-in error:', err);
+
+            let errorMessage = 'An unexpected error occurred. Please try again.';
+
+            if (err.code === statusCodes.SIGN_IN_CANCELLED) {
+                errorMessage = 'Sign-in was cancelled. Please try again to continue.';
+            } else if (err.code === statusCodes.IN_PROGRESS) {
+                errorMessage = 'Sign-in is already in progress. Please wait.';
+            } else if (err.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+                errorMessage = 'Google Play Services is not available or outdated. Please update it from the Play Store.';
+            } else if (err.code === 'auth/network-request-failed') {
+                errorMessage = 'Network error. Please check your internet connection and try again.';
+            } else if (err.code === 'auth/too-many-requests') {
+                errorMessage = 'Too many attempts. Please try again later.';
+            } else if (err.code === 'auth/user-disabled') {
+                errorMessage = 'This account has been disabled. Please contact support.';
+            } else if (err.message) {
+                errorMessage = err.message;
+            }
+
+            setError(errorMessage);
+            setLoading(false);
+        }
+    };
 
     const onSubmit = async (data: SignInFormData) => {
         try {
@@ -230,6 +291,30 @@ export default function SignInScreen() {
                             >
                                 Sign In
                             </Button>
+
+                            {/* Divider */}
+                            <View style={styles.divider}>
+                                <View style={styles.dividerLine} />
+                                <Text style={styles.dividerText}>OR</Text>
+                                <View style={styles.dividerLine} />
+                            </View>
+
+                            {/* Google Sign In Button */}
+                            <TouchableOpacity
+                                onPress={signInWithGoogle}
+                                style={styles.googleButton}
+                                activeOpacity={0.7}
+                                disabled={loading}
+                            >
+                                <Image
+                                    style={styles.googleIcon}
+                                    source={{ uri: 'https://img.clerk.com/static/google.png?width=160' }}
+                                />
+                                <Text style={styles.googleButtonText}>
+                                    Continue with Google
+                                </Text>
+                            </TouchableOpacity>
+
                             {/* Navigate to Sign Up */}
                             <TouchableOpacity
                                 onPress={() => router.push('/signup')}
@@ -347,5 +432,42 @@ const getStyles = (colors: ColorScheme) => StyleSheet.create({
     errorText: {
         color: colors.destructive,
         textAlign: 'center',
+    },
+    divider: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginVertical: 24,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: colors.border,
+    },
+    dividerText: {
+        marginHorizontal: 16,
+        fontSize: 14,
+        color: colors.mutedForeground,
+        fontWeight: '500',
+    },
+    googleButton: {
+        width: '100%',
+        borderWidth: 2,
+        borderRadius: 12,
+        height: 56,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        borderColor: colors.border,
+        backgroundColor: colors.background,
+    },
+    googleIcon: {
+        width: 24,
+        height: 24,
+    },
+    googleButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: colors.foreground,
     },
 });

@@ -1,8 +1,9 @@
 import { auth } from '@/config/firebase.config';
 import LoadingScreen from '@/screens/loading.screen';
 import { saveUserToFirestore } from '@/services/user.service';
-import { AppUser } from '@/types/user.type';
+import { AppUser } from '@/types';
 import { getRole } from '@/utils/role';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { router } from 'expo-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import React, { createContext, ReactNode, useContext, useEffect, useRef, useState } from 'react';
@@ -36,6 +37,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Sign out function
   const signOut = async () => {
     try {
+      await GoogleSignin.signOut();
       await auth.signOut();
 
       setSession({
@@ -64,6 +66,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.log('⚠️ Auth listener already set up, skipping');
       return;
     }
+
+    GoogleSignin.configure({
+      webClientId: '29326093701-i1ck9cu2q57btndfpd1jrh9hkiblkdd2.apps.googleusercontent.com',
+      profileImageSize: 150,
+    });
 
     // Listen to Firebase auth state changes
     unsubscribeRef.current = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -136,7 +143,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     if (session.status === 'unauthenticated') {
       console.log('🔀 Redirecting to login...');
-      router.replace('/signin');
+      router.replace('/(auth)/signin');
       return;
     }
 
@@ -149,7 +156,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         router.replace('/(student)/(tabs)/home');
       } else {
         console.log('❌ Unknown user role');
-        router.replace('/signin');
+        router.replace('/(auth)/signin');
       }
     }
   }, [authInitialized, session.status, session.user?.role]);
