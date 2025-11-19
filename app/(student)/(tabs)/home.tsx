@@ -76,13 +76,23 @@ export default function StudentHomeTab() {
       // Get stats for each course
       const statsPromises = activeCourses.map(async (course) => {
         try {
-          // Get attendance
+          // Get student's section and ID for this course
+          const studentData = user as any;
+          const studentSection = studentData.section || undefined;
+          const studentId = studentData.studentId || undefined;
+
+          // Get attendance with section filter and studentId
           const attendancePercentage = await calculateAttendancePercentage(
             course.id,
-            user.email!
+            user.email!,
+            studentSection,
+            studentId
           );
-          const allSessions = await getCourseAttendance(course.id);
-          const totalClasses = allSessions.length;
+          const allSessions = await getCourseAttendance(course.id, studentSection);
+          const studentIdStr = studentId ? String(studentId) : user.email!;
+          const totalClasses = allSessions.filter(
+            session => studentIdStr in session.studentStatuses
+          ).length;
 
           // Get CTs and marks
           const classTests = await getCourseClassTests(course.id);

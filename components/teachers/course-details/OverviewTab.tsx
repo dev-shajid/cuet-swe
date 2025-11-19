@@ -4,7 +4,7 @@ import { ColorScheme } from '@/hooks/use-theme';
 import { AttendanceSession, ClassTest, Student } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 interface OverviewTabProps {
     students: Student[];
@@ -17,6 +17,9 @@ interface OverviewTabProps {
     onEditCourse: () => void;
     onInviteMembers: () => void;
     onViewAttendance: (session: AttendanceSession) => void;
+    onExportReport?: () => void;
+    refreshing?: boolean;
+    onRefresh?: () => void;
 }
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
@@ -30,15 +33,36 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     onEditCourse,
     onInviteMembers,
     onViewAttendance,
+    onExportReport,
+    refreshing = false,
+    onRefresh,
 }) => {
     const styles = getStyles(colors);
 
+    // Calculate average attendance
     const avgAttendance = students.length > 0
         ? Math.round(Object.values(studentAttendancePercentages).reduce((a, b) => a + b, 0) / students.length)
         : 0;
 
+    // Calculate total classes as max of section A and B
+    const sectionACounts = attendanceSessions.filter(s => s.section === 'A').length;
+    const sectionBCounts = attendanceSessions.filter(s => s.section === 'B').length;
+    const totalClasses = Math.max(sectionACounts, sectionBCounts);
+
     return (
-        <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+            style={styles.tabContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+                onRefresh ? (
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={colors.primary}
+                    />
+                ) : undefined
+            }
+        >
             {/* Course Stats */}
             <View style={styles.statsGrid}>
                 <Card style={styles.statCard}>
@@ -53,7 +77,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                     <View style={[styles.statIcon, { backgroundColor: colors.chart2 + '20' }]}>
                         <Ionicons name="calendar" size={24} color={colors.chart2} />
                     </View>
-                    <Text style={styles.statValue}>{attendanceSessions.length}</Text>
+                    <Text style={styles.statValue}>{totalClasses}</Text>
                     <Text style={styles.statLabel}>Classes Held</Text>
                 </Card>
 
@@ -117,6 +141,18 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                             Invite Members
                         </Text>
                     </TouchableOpacity>
+
+                    {onExportReport && (
+                        <TouchableOpacity
+                            style={[styles.actionCard, { backgroundColor: '#10b981' }]}
+                            onPress={onExportReport}
+                        >
+                            <Ionicons name="download" size={28} color="#FFFFFF" />
+                            <Text style={[styles.actionText, { color: '#FFFFFF' }]}>
+                                Export Report
+                            </Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
             </View>
 

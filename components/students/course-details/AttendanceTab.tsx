@@ -4,31 +4,49 @@ import { ColorScheme } from '@/hooks/use-theme';
 import { AttendanceSession, AttendanceStatus } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 interface AttendanceTabProps {
     sessions: AttendanceSession[];
     studentEmail: string;
+    studentId: number;
     attendancePercentage: number;
     colors: ColorScheme;
+    refreshing: boolean;
+    onRefresh: () => void;
 }
 
 export const AttendanceTab: React.FC<AttendanceTabProps> = ({
     sessions,
     studentEmail,
+    studentId,
     attendancePercentage,
     colors,
+    refreshing,
+    onRefresh,
 }) => {
     const styles = getStyles(colors);
 
+    const studentIdStr = String(studentId);
     const totalSessions = sessions.length;
     const presentCount = sessions.filter(
-        (session) => session.studentStatuses[studentEmail] === 'present'
+        (session) => session.studentStatuses[studentIdStr] === 'present'
     ).length;
     const absentCount = totalSessions - presentCount;
 
     return (
-        <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+            style={styles.tabContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+                <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    tintColor={colors.primary}
+                    colors={[colors.primary]}
+                />
+            }
+        >
             {/* Summary Card */}
             <Card style={styles.summaryCard}>
                 <View style={styles.summaryRow}>
@@ -79,7 +97,7 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
                     .sort((a, b) => b.date.toMillis() - a.date.toMillis())
                     .map((session, index) => {
                         const status: AttendanceStatus =
-                            session.studentStatuses[studentEmail] || 'absent';
+                            session.studentStatuses[studentIdStr] || 'absent';
                         const isPresent = status === 'present';
 
                         return (

@@ -3,7 +3,7 @@ import { Text } from '@/components/ui/text';
 import { ColorScheme } from '@/hooks/use-theme';
 import { CreateCourseFormData } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
+import React, { useState } from 'react';
 import { Controller, UseFormReturn } from 'react-hook-form';
 import {
     KeyboardAvoidingView,
@@ -11,6 +11,7 @@ import {
     Platform,
     ScrollView,
     StyleSheet,
+    Switch,
     TextInput,
     TouchableOpacity,
     View,
@@ -34,6 +35,7 @@ export const CreateCourseModal: React.FC<CreateCourseModalProps> = ({
     colors,
 }) => {
     const styles = getStyles(colors);
+    const [isSessional, setIsSessional] = useState(false);
 
     return (
         <Modal
@@ -59,36 +61,175 @@ export const CreateCourseModal: React.FC<CreateCourseModalProps> = ({
                     </View>
 
                     <ScrollView showsVerticalScrollIndicator={false}>
-                        {/* Course Name */}
+                        {/* Course Code */}
                         <View style={styles.inputContainer}>
-                            <Text style={styles.label}>Course Name</Text>
+                            <Text style={styles.label}>
+                                Course Code <Text style={styles.required}>*</Text>
+                            </Text>
                             <Controller
                                 control={form.control}
-                                name="name"
-                                rules={{ required: 'Course name is required' }}
+                                name="code"
+                                rules={{
+                                    required: 'Course code is required',
+                                    pattern: {
+                                        value: /^[A-Z]{3}-\d{3}$/,
+                                        message: 'Format must be like CSE-211'
+                                    }
+                                }}
                                 render={({ field: { onChange, value } }) => (
                                     <TextInput
                                         style={styles.input}
-                                        placeholder="e.g., Data Structures and Algorithms"
+                                        placeholder="e.g., CSE-211"
+                                        placeholderTextColor={colors.mutedForeground}
+                                        onChangeText={(text) => onChange(text.toUpperCase())}
+                                        value={value}
+                                        autoCapitalize="characters"
+                                        maxLength={7}
+                                    />
+                                )}
+                            />
+                            {form.formState.errors.code && (
+                                <Text style={styles.errorMessage}>
+                                    {form.formState.errors.code.message}
+                                </Text>
+                            )}
+                        </View>
+
+                        {/* Course Name (Optional) */}
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.label}>Course Name (Optional)</Text>
+                            <Controller
+                                control={form.control}
+                                name="name"
+                                render={({ field: { onChange, value } }) => (
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="e.g., Data Structures"
                                         placeholderTextColor={colors.mutedForeground}
                                         onChangeText={onChange}
                                         value={value}
                                     />
                                 )}
                             />
-                            {form.formState.errors.name && (
+                        </View>
+
+                        {/* Batch */}
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.label}>
+                                Batch <Text style={styles.required}>*</Text>
+                            </Text>
+                            <Controller
+                                control={form.control}
+                                name="batch"
+                                rules={{
+                                    required: 'Batch is required',
+                                    pattern: {
+                                        value: /^\d{4}$/,
+                                        message: 'Must be 4 digits (e.g., 2024)'
+                                    }
+                                }}
+                                render={({ field: { onChange, value } }) => (
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="e.g., 2024"
+                                        placeholderTextColor={colors.mutedForeground}
+                                        onChangeText={onChange}
+                                        value={value?.toString()}
+                                        keyboardType="number-pad"
+                                        maxLength={4}
+                                    />
+                                )}
+                            />
+                            {form.formState.errors.batch && (
                                 <Text style={styles.errorMessage}>
-                                    {form.formState.errors.name.message}
+                                    {form.formState.errors.batch.message}
                                 </Text>
                             )}
                         </View>
 
-                        <View style={styles.infoBox}>
-                            <Ionicons name="information-circle" size={20} color={colors.primary} />
-                            <Text style={styles.infoText}>
-                                Course code will be automatically generated for easy sharing
+                        {/* Credit */}
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.label}>
+                                Credit <Text style={styles.required}>*</Text>
                             </Text>
+                            <Controller
+                                control={form.control}
+                                name="credit"
+                                rules={{
+                                    required: 'Credit is required',
+                                    validate: (value) => {
+                                        const num = parseFloat(value?.toString() || '0');
+                                        if (isNaN(num) || num <= 0) return 'Must be a positive number';
+                                        if (num > 10) return 'Credit cannot exceed 10';
+                                        return true;
+                                    }
+                                }}
+                                render={({ field: { onChange, value } }) => (
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="e.g., 3.0"
+                                        placeholderTextColor={colors.mutedForeground}
+                                        onChangeText={onChange}
+                                        value={value?.toString()}
+                                        keyboardType="decimal-pad"
+                                    />
+                                )}
+                            />
+                            {form.formState.errors.credit && (
+                                <Text style={styles.errorMessage}>
+                                    {form.formState.errors.credit.message}
+                                </Text>
+                            )}
                         </View>
+
+                        {/* Sessional Course Toggle */}
+                        <View style={styles.switchContainer}>
+                            <View style={styles.switchLabel}>
+                                <Text style={styles.label}>Sessional Course</Text>
+                                <Text style={styles.switchHint}>Lab/Project based course</Text>
+                            </View>
+                            <Controller
+                                control={form.control}
+                                name="isSessional"
+                                render={({ field: { onChange, value } }) => (
+                                    <Switch
+                                        value={value || isSessional}
+                                        onValueChange={(val) => {
+                                            setIsSessional(val);
+                                            onChange(val);
+                                        }}
+                                        trackColor={{ false: colors.border, true: colors.primary + '80' }}
+                                        thumbColor={value || isSessional ? colors.primary : colors.mutedForeground}
+                                    />
+                                )}
+                            />
+                        </View>
+
+                        {/* Best CT Count (Only if not sessional) */}
+                        {!isSessional && (
+                            <View style={styles.inputContainer}>
+                                <Text style={styles.label}>Best CT Count</Text>
+                                <Controller
+                                    control={form.control}
+                                    name="bestCTCount"
+                                    defaultValue={3}
+                                    render={({ field: { onChange, value } }) => (
+                                        <TextInput
+                                            style={styles.input}
+                                            placeholder="3"
+                                            placeholderTextColor={colors.mutedForeground}
+                                            onChangeText={(text) => onChange(text ? parseInt(text) : 3)}
+                                            value={value?.toString() || '3'}
+                                            keyboardType="number-pad"
+                                            maxLength={2}
+                                        />
+                                    )}
+                                />
+                                <Text style={styles.hint}>
+                                    Number of best CTs to count for final grade
+                                </Text>
+                            </View>
+                        )}
 
                         <Button
                             onPress={form.handleSubmit(onSubmit)}
@@ -158,6 +299,29 @@ const getStyles = (colors: ColorScheme) =>
             fontSize: 12,
             marginTop: 4,
             marginLeft: 4,
+        },
+        required: {
+            color: '#EF4444',
+        },
+        hint: {
+            fontSize: 12,
+            color: colors.mutedForeground,
+            marginTop: 4,
+        },
+        switchContainer: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 20,
+            paddingVertical: 8,
+        },
+        switchLabel: {
+            flex: 1,
+        },
+        switchHint: {
+            fontSize: 12,
+            color: colors.mutedForeground,
+            marginTop: 2,
         },
         infoBox: {
             flexDirection: 'row',

@@ -4,7 +4,7 @@ import { ColorScheme } from '@/hooks/use-theme';
 import { Course, Student } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 interface OverviewTabProps {
     course: Course;
@@ -14,6 +14,8 @@ interface OverviewTabProps {
     attendancePercentage: number;
     averageCTMarks: number;
     colors: ColorScheme;
+    refreshing: boolean;
+    onRefresh: () => void;
 }
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
@@ -24,11 +26,24 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
     attendancePercentage,
     averageCTMarks,
     colors,
+    refreshing,
+    onRefresh,
 }) => {
     const styles = getStyles(colors);
 
     return (
-        <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+            style={styles.tabContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+                <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    tintColor={colors.primary}
+                    colors={[colors.primary]}
+                />
+            }
+        >
             {/* Course Info */}
             <Card style={styles.infoCard}>
                 <View style={styles.infoRow}>

@@ -3,7 +3,7 @@ import { ColorScheme, useTheme } from '@/hooks/use-theme';
 import { Ionicons } from '@expo/vector-icons';
 import { LinkProps, router } from 'expo-router';
 import { useRef } from 'react';
-import { Animated, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type ButtonVariant = "default" | "destructive" | "primary" | "secondary";
@@ -17,13 +17,15 @@ interface ScreenHeaderProps {
     onPress: () => void;
     variant?: ButtonVariant;
   };
+  onLongPressHeader?: () => void;
 }
 
 export function ScreenHeader({
   title,
   subtitle,
   showBack = false,
-  rightAction
+  rightAction,
+  onLongPressHeader
 }: ScreenHeaderProps) {
   const { isDarkMode, colors } = useTheme();
   const styles = getStyles(colors);
@@ -67,6 +69,11 @@ export function ScreenHeader({
         style={styles.header}
         edges={{ bottom: 'off', top: 'maximum' }}
       >
+        <TouchableOpacity
+          style={StyleSheet.absoluteFill}
+          onLongPress={onLongPressHeader}
+          activeOpacity={1}
+        />
         {/* Back Button / Spacer */}
         {showBack ? (
           <TouchableOpacity

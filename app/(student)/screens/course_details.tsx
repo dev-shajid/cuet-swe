@@ -41,6 +41,7 @@ export default function StudentCourseDetailScreen() {
     // State
     const [activeTab, setActiveTab] = useState<TabType>('overview');
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [course, setCourse] = useState<Course | null>(null);
     const [currentStudent, setCurrentStudent] = useState<Student | null>(null);
     const [classTests, setClassTests] = useState<ClassTest[]>([]);
@@ -91,18 +92,36 @@ export default function StudentCourseDetailScreen() {
             }
             setMarks(marksData);
 
-            // Load attendance sessions
-            const attendance = await getCourseAttendance(courseId);
-            setAttendanceSessions(attendance);
+            // Load attendance sessions with section filter
+            const studentSection = student?.section || undefined;
+            const studentId = student?.studentId || undefined;
+            const attendance = await getCourseAttendance(courseId, studentSection);
+            // Filter sessions where current student has a record (using studentId)
+            const studentIdStr = studentId ? String(studentId) : user.email;
+            const studentAttendance = attendance.filter(
+                session => studentIdStr in session.studentStatuses
+            );
+            setAttendanceSessions(studentAttendance);
 
             // Load attendance percentage
-            const percentage = await calculateAttendancePercentage(courseId, user.email);
+            const percentage = await calculateAttendancePercentage(
+                courseId,
+                user.email,
+                studentSection,
+                studentId
+            );
             setAttendancePercentage(percentage);
         } catch (error) {
             console.error('Error loading course data:', error);
         } finally {
             setLoading(false);
         }
+    };
+
+    const onRefresh = async () => {
+        setRefreshing(true);
+        await loadCourseData();
+        setRefreshing(false);
     };
 
     const calculateAverageCTMarks = (): number => {
@@ -204,14 +223,19 @@ export default function StudentCourseDetailScreen() {
                     attendancePercentage={attendancePercentage}
                     averageCTMarks={calculateAverageCTMarks()}
                     colors={colors}
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
                 />
             )}
             {activeTab === 'attendance' && (
                 <AttendanceTab
                     sessions={attendanceSessions}
                     studentEmail={currentStudent.email}
+                    studentId={currentStudent.studentId}
                     attendancePercentage={attendancePercentage}
                     colors={colors}
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
                 />
             )}
             {activeTab === 'ct' && (
@@ -221,6 +245,8 @@ export default function StudentCourseDetailScreen() {
                     studentEmail={currentStudent.email}
                     bestCTCount={course.bestCTCount}
                     colors={colors}
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
                 />
             )}
         </Container>

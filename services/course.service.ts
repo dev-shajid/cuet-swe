@@ -48,31 +48,54 @@ const generateCourseCode = (): string => {
 // ========================================================================
 
 /**
- * Create course with only name
- * Code is auto-generated
+ * Create course with code, name, batch, credit, sessional, and bestCTCount
+ * Code must be in CSE-XXX format
  */
 export const createCourse = async (
-    courseName: string,
-    teacherEmail: string
+    courseCode: string,
+    teacherEmail: string,
+    courseName?: string,
+    batch?: number,
+    credit?: number,
+    isSessional: boolean = false,
+    bestCTCount?: number
 ): Promise<Course | null> => {
     try {
-        if (!courseName || !teacherEmail) {
-            console.log('❌ Course name and teacher email required');
+        if (!courseCode || !teacherEmail) {
+            console.log('❌ Course code and teacher email required');
+            return null;
+        }
+
+        if (!credit || credit <= 0) {
+            console.log('❌ Valid credit is required');
+            return null;
+        }
+
+        // Validate course code format (CSE-211)
+        const codePattern = /^[A-Z]{3}-\d{3}$/;
+        if (!codePattern.test(courseCode)) {
+            console.log('❌ Invalid course code format. Must be like CSE-211');
             return null;
         }
 
         const courseId = generateRandomId();
-        const courseCode = generateCourseCode();
 
-        const newCourse: Omit<Course, 'bestCTCount'> & { bestCTCount?: number } = {
+        const newCourse: Omit<Course, 'bestCTCount'> & {
+            bestCTCount?: number;
+            batch?: number;
+            isSessional?: boolean;
+        } = {
             id: courseId,
-            name: courseName,
+            name: courseName || courseCode,
             code: courseCode,
             ownerEmail: teacherEmail,
+            credit: credit,
             createdAt: Timestamp.now(),
+            ...(batch && { batch }),
+            ...(isSessional !== undefined && { isSessional }),
+            ...(!isSessional && bestCTCount && { bestCTCount }),
         };
 
-        // Only add bestCTCount if it has a value (Firebase doesn't accept undefined)
         await setDoc(doc(db, 'courses', courseId), newCourse);
 
         // Create teacher membership
@@ -92,7 +115,7 @@ export const createCourse = async (
             joinedAt: Timestamp.now(),
         } as TeacherMembership);
 
-        console.log(`✅ Course created: "${courseName}", Code: ${courseCode}`);
+        console.log(`✅ Course created: "${courseName || courseCode}", Code: ${courseCode}`);
         return newCourse as Course;
     } catch (error) {
         console.error('❌ Error creating course:', error);
@@ -589,17 +612,23 @@ export const isStudentEnrolled = async (
 // ========================================================================
 
 /**
- * Add a student ID range for automatic enrollment
+ * Add a student ID range for automatic enrollment with section
  */
 export const addStudentIdRange = async (
     courseId: string,
     startId: number,
     endId: number,
+    section: string,
     userEmail: string
 ): Promise<boolean> => {
     try {
         if (startId > endId) {
             console.log('❌ Start ID cannot be greater than end ID');
+            return false;
+        }
+
+        if (!section || section.trim() === '') {
+            console.log('❌ Section is required');
             return false;
         }
 
@@ -655,6 +684,7 @@ export const addStudentIdRange = async (
             courseId,
             startId,
             endId,
+            section: section.trim().toUpperCase(),
             addedBy: userEmail,
             createdAt: Timestamp.now(),
         };
@@ -664,10 +694,95 @@ export const addStudentIdRange = async (
             enrollment
         );
 
-        console.log(`✅ Student ID range added: ${startId}-${endId}`);
+        console.log(`✅ Student ID range added: ${startId}-${endId} (Section ${section})`);
         return true;
     } catch (error) {
         console.error('❌ Error adding student ID range:', error);
+        return false;
+    }
+};
+
+/**
+ * Update an existing student ID range
+ */
+export const updateStudentIdRange = async (
+    courseId: string,
+    enrollmentId: string,
+    startId: number,
+    endId: number,
+    section: string,
+    userEmail: string
+): Promise<boolean> => {
+    try {
+        if (startId > endId) {
+            console.log('❌ Start ID cannot be greater than end ID');
+            return false;
+        }
+
+        if (!section || section.trim() === '') {
+            console.log('❌ Section is required');
+            return false;
+        }
+
+        const courseRef = doc(db, 'courses', courseId);
+        const courseSnap = await getDoc(courseRef);
+
+        if (!courseSnap.exists()) {
+            console.log('❌ Course not found');
+            return false;
+        }
+
+        const courseData = courseSnap.data() as Course;
+
+        // Only owner or teachers can update student ID ranges
+        const membershipRef = doc(
+            db,
+            'courses',
+            courseId,
+            'teacherMemberships',
+            userEmail
+        );
+        const membershipSnap = await getDoc(membershipRef);
+
+        if (courseData.ownerEmail !== userEmail && !membershipSnap.exists()) {
+            console.log('❌ Only teachers can update student ID ranges');
+            return false;
+        }
+
+        // Get existing enrollments to check for overlaps (excluding current)
+        const enrollmentsSnapshot = await getDocs(
+            collection(db, 'courses', courseId, 'studentEnrollments')
+        );
+
+        // Check for overlapping ranges (excluding the current enrollment)
+        const hasOverlap = enrollmentsSnapshot.docs.some((enrollDoc) => {
+            if (enrollDoc.id === enrollmentId) return false; // Skip current enrollment
+
+            const enrollment = enrollDoc.data() as StudentEnrollment;
+            return (
+                (startId >= enrollment.startId && startId <= enrollment.endId) ||
+                (endId >= enrollment.startId && endId <= enrollment.endId) ||
+                (startId <= enrollment.startId && endId >= enrollment.endId)
+            );
+        });
+
+        if (hasOverlap) {
+            console.log('❌ This range overlaps with an existing range');
+            return false;
+        }
+
+        // Update the enrollment
+        const enrollmentRef = doc(db, 'courses', courseId, 'studentEnrollments', enrollmentId);
+        await updateDoc(enrollmentRef, {
+            startId,
+            endId,
+            section: section.trim().toUpperCase(),
+        });
+
+        console.log(`✅ Student ID range updated: ${startId}-${endId} (Section ${section})`);
+        return true;
+    } catch (error) {
+        console.error('❌ Error updating student ID range:', error);
         return false;
     }
 };
@@ -965,7 +1080,7 @@ export const getTeacherCourseStatus = async (
  */
 export const updateCourseInfo = async (
     courseId: string,
-    updates: { name?: string; bestCTCount?: number },
+    updates: { name?: string; bestCTCount?: number; credit?: number },
     userEmail: string
 ): Promise<boolean> => {
     try {
@@ -1007,6 +1122,14 @@ export const updateCourseInfo = async (
         }
         if (updates.bestCTCount !== undefined) {
             updateData.bestCTCount = updates.bestCTCount;
+        }
+        if (updates.credit !== undefined) {
+            const creditNum = Number(updates.credit);
+            if (!isNaN(creditNum) && creditNum > 0 && creditNum <= 10) {
+                updateData.credit = creditNum;
+            } else {
+                console.error('❌ Invalid credit value provided');
+            }
         }
 
         if (Object.keys(updateData).length === 0) {
@@ -1076,6 +1199,76 @@ export const updateBestCTCount = async (
         return true;
     } catch (error) {
         console.error('❌ Error updating best CT count:', error);
+        return false;
+    }
+};
+
+// ========================================================================
+// 7. COURSE DELETION
+// ========================================================================
+
+/**
+ * Delete a course and all its related data
+ * @param courseId - The course ID
+ * @param userEmail - User attempting to delete (must be owner)
+ */
+export const deleteCourse = async (
+    courseId: string,
+    userEmail: string
+): Promise<boolean> => {
+    try {
+        if (!courseId || !userEmail) {
+            console.error('❌ Missing required fields');
+            return false;
+        }
+
+        // Verify user is owner
+        const courseRef = doc(db, 'courses', courseId);
+        const courseSnap = await getDoc(courseRef);
+
+        if (!courseSnap.exists()) {
+            console.error('❌ Course not found');
+            return false;
+        }
+
+        const courseData = courseSnap.data() as Course;
+
+        if (courseData.ownerEmail !== userEmail) {
+            console.error('❌ Only the course owner can delete the course');
+            return false;
+        }
+
+        // Use batch to delete all related data
+        const batch = writeBatch(db);
+
+        // Delete course document
+        batch.delete(courseRef);
+
+        // Delete student enrollments
+        const enrollmentsQuery = query(
+            collection(db, 'courses', courseId, 'studentEnrollments')
+        );
+        const enrollmentsSnap = await getDocs(enrollmentsQuery);
+        enrollmentsSnap.docs.forEach((doc) => {
+            batch.delete(doc.ref);
+        });
+
+        // Delete teacher memberships
+        const membershipsQuery = query(
+            collection(db, 'courses', courseId, 'teacherMemberships')
+        );
+        const membershipsSnap = await getDocs(membershipsQuery);
+        membershipsSnap.docs.forEach((doc) => {
+            batch.delete(doc.ref);
+        });
+
+        // Commit the batch
+        await batch.commit();
+
+        console.log(`✅ Course deleted successfully`);
+        return true;
+    } catch (error) {
+        console.error('❌ Error deleting course:', error);
         return false;
     }
 };

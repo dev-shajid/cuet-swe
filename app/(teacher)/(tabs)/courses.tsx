@@ -1,5 +1,6 @@
 import { CourseCard } from '@/components/teachers/CourseCard';
 import { CreateCourseModal } from '@/components/teachers/CreateCourseModal';
+import { Modal } from '@/components/ui';
 import { Container } from '@/components/ui/container';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { Text } from '@/components/ui/text';
@@ -26,8 +27,6 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import Swipeable from 'react-native-gesture-handler/Swipeable';
 
 interface CourseWithStats extends Course {
     studentCount: number;
@@ -50,10 +49,17 @@ export default function TeacherCoursesScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [searchText, setSearchText] = useState('');
     const [activeTab, setActiveTab] = useState<TabType>('active');
+    const [selectedCourse, setSelectedCourse] = useState<CourseWithStatsAndStatus | null>(null);
+    const [showActionsModal, setShowActionsModal] = useState(false);
 
     const createForm = useForm<CreateCourseFormData>({
         defaultValues: {
+            code: '',
             name: '',
+            batch: new Date().getFullYear(),
+            credit: 3.0,
+            isSessional: false,
+            bestCTCount: 3,
         },
     });
 
@@ -101,13 +107,21 @@ export default function TeacherCoursesScreen() {
                 return;
             }
 
-            const newCourse = await createCourse(data.name, user.email);
+            const newCourse = await createCourse(
+                data.code,
+                user.email,
+                data.name,
+                data.batch,
+                data.credit,
+                data.isSessional,
+                data.bestCTCount
+            );
 
             if (newCourse) {
-                Alert.alert('Success', `Course created with code: ${newCourse.code}`);
+                Alert.alert('Success', `Course created: ${data.code}`);
                 setShowCreateModal(false);
                 createForm.reset();
-                await loadCourses(); // Reload courses
+                await loadCourses();
             } else {
                 Alert.alert('Error', 'Failed to create course');
             }
@@ -123,14 +137,23 @@ export default function TeacherCoursesScreen() {
         router.push(`/(teacher)/screens/course_details?courseId=${course.id}`);
     };
 
-    const handleToggleArchive = async (course: CourseWithStatsAndStatus) => {
+    const handleEditCourse = () => {
+        setShowActionsModal(false);
+        // TODO: Navigate to edit screen or show edit modal
+        Alert.alert('Coming Soon', 'Course editing will be available soon');
+    };
+
+    const handleToggleArchive = async (course?: CourseWithStatsAndStatus) => {
+        const targetCourse = course || selectedCourse;
+        if (!targetCourse || !user?.email) return;
+
         try {
-            if (!user?.email) return;
+            setShowActionsModal(false);
 
             const success = await toggleTeacherCourseStatus(
-                course.id,
+                targetCourse.id,
                 user.email,
-                !course.isActive // Toggle status
+                !targetCourse.isActive
             );
 
             if (success) {
@@ -157,173 +180,163 @@ export default function TeacherCoursesScreen() {
 
     const styles = getStyles(colors);
 
-    const renderRightActions = (course: CourseWithStatsAndStatus) => {
-        return (
-            <TouchableOpacity
-                style={[
-                    styles.swipeAction,
-                    course.isActive ? styles.archiveAction : styles.unarchiveAction,
-                ]}
-                onPress={() => handleToggleArchive(course)}
-            >
-                <Ionicons
-                    name={course.isActive ? 'archive' : 'arrow-undo'}
-                    size={24}
-                    color="#fff"
-                />
-                <Text style={styles.swipeActionText}>
-                    {course.isActive ? 'Archive' : 'Unarchive'}
-                </Text>
-            </TouchableOpacity>
-        );
-    };
-
     const renderCourseCard = ({ item }: { item: CourseWithStatsAndStatus }) => (
-        <Swipeable
-            renderRightActions={() => renderRightActions(item)}
-            overshootRight={false}
-        >
-            <CourseCard
-                course={item}
-                colors={colors}
-                onPress={() => handleCoursePress(item)}
-            />
-        </Swipeable>
+        <CourseCard
+            course={item}
+            colors={colors}
+            onPress={() => handleCoursePress(item)}
+        />
     );
 
     if (refreshing && courses.length === 0) {
         return (
-            <GestureHandlerRootView style={{ flex: 1 }}>
-                <Container useSafeArea={false} style={styles.container}>
-                    <ScreenHeader
-                        title="My Courses"
-                        subtitle="Manage your courses and students"
-                    />
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="large" color={colors.primary} />
-                    </View>
-                </Container>
-            </GestureHandlerRootView>
+            <Container useSafeArea={false} style={styles.container}>
+                <ScreenHeader
+                    title="My Courses"
+                    subtitle="Manage your courses and students"
+                />
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                </View>
+            </Container>
         );
     }
 
     return (
-        <GestureHandlerRootView style={{ flex: 1 }}>
-            <Container useSafeArea={false} style={styles.container}>
-                {/* Header */}
-                <ScreenHeader
-                    title="My Courses"
-                    subtitle="Manage your courses and students"
-                    rightAction={{
-                        icon: 'add',
-                        onPress: () => setShowCreateModal(true),
-                        variant: 'primary',
-                    }}
-                />
+        <Container useSafeArea={false} style={styles.container}>
+            {/* Header */}
+            <ScreenHeader
+                title="My Courses"
+                subtitle="Manage your courses and students"
+                rightAction={{
+                    icon: 'add',
+                    onPress: () => setShowCreateModal(true),
+                    variant: 'primary',
+                }}
+            />
 
-                {/* Search Bar */}
-                <View style={styles.searchContainer}>
-                    <View style={styles.searchInputWrapper}>
-                        <Ionicons
-                            name="search"
-                            size={20}
-                            color={colors.mutedForeground}
-                            style={styles.searchIcon}
-                        />
-                        <TextInput
-                            style={styles.searchInput}
-                            placeholder="Search courses..."
-                            placeholderTextColor={colors.mutedForeground}
-                            value={searchText}
-                            onChangeText={setSearchText}
-                        />
-                        {searchText.length > 0 && (
-                            <TouchableOpacity onPress={() => setSearchText('')}>
-                                <Ionicons
-                                    name="close-circle"
-                                    size={20}
-                                    color={colors.mutedForeground}
-                                />
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                </View>
-
-                {/* Tabs */}
-                <View style={styles.tabsContainer}>
-                    <TouchableOpacity
-                        style={[
-                            styles.tab,
-                            activeTab === 'active' && styles.tabActive,
-                        ]}
-                        onPress={() => setActiveTab('active')}
-                    >
-                        <Text
-                            style={[
-                                styles.tabText,
-                                activeTab === 'active' && styles.tabTextActive,
-                            ]}
-                        >
-                            Active
-                        </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[
-                            styles.tab,
-                            activeTab === 'archived' && styles.tabActive,
-                        ]}
-                        onPress={() => setActiveTab('archived')}
-                    >
-                        <Text
-                            style={[
-                                styles.tabText,
-                                activeTab === 'archived' && styles.tabTextActive,
-                            ]}
-                        >
-                            Archived
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-
-                {/* Courses List */}
-                <FlatList
-                    data={filteredCourses}
-                    renderItem={renderCourseCard}
-                    keyExtractor={(item) => item.id}
-                    contentContainerStyle={styles.listContent}
-                    showsVerticalScrollIndicator={false}
-                    onRefresh={loadCourses}
-                    refreshing={refreshing}
-                    ListEmptyComponent={
-                        <View style={styles.emptyState}>
+            {/* Search Bar */}
+            <View style={styles.searchContainer}>
+                <View style={styles.searchInputWrapper}>
+                    <Ionicons
+                        name="search"
+                        size={20}
+                        color={colors.mutedForeground}
+                        style={styles.searchIcon}
+                    />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Search courses..."
+                        placeholderTextColor={colors.mutedForeground}
+                        value={searchText}
+                        onChangeText={setSearchText}
+                    />
+                    {searchText.length > 0 && (
+                        <TouchableOpacity onPress={() => setSearchText('')}>
                             <Ionicons
-                                name={activeTab === 'active' ? 'book-outline' : 'archive-outline'}
-                                size={64}
+                                name="close-circle"
+                                size={20}
                                 color={colors.mutedForeground}
                             />
-                            <Text style={styles.emptyTitle}>
-                                {activeTab === 'active' ? 'No active courses' : 'No archived courses'}
-                            </Text>
-                            <Text style={styles.emptySubtitle}>
-                                {activeTab === 'active'
-                                    ? 'Create a new course to get started'
-                                    : 'Swipe left on a course to archive it'}
-                            </Text>
-                        </View>
-                    }
-                />
+                        </TouchableOpacity>
+                    )}
+                </View>
+            </View>
 
-                {/* Create Course Modal */}
-                <CreateCourseModal
-                    visible={showCreateModal}
-                    onClose={() => setShowCreateModal(false)}
-                    form={createForm}
-                    onSubmit={onCreateCourse}
-                    loading={loading}
-                    colors={colors}
-                />
-            </Container>
-        </GestureHandlerRootView>
+            {/* Tabs */}
+            <View style={styles.tabsContainer}>
+                <TouchableOpacity
+                    style={[
+                        styles.tab,
+                        activeTab === 'active' && styles.tabActive,
+                    ]}
+                    onPress={() => setActiveTab('active')}
+                >
+                    <Text
+                        style={[
+                            styles.tabText,
+                            activeTab === 'active' && styles.tabTextActive,
+                        ]}
+                    >
+                        Active
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[
+                        styles.tab,
+                        activeTab === 'archived' && styles.tabActive,
+                    ]}
+                    onPress={() => setActiveTab('archived')}
+                >
+                    <Text
+                        style={[
+                            styles.tabText,
+                            activeTab === 'archived' && styles.tabTextActive,
+                        ]}
+                    >
+                        Archived
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
+            {/* Courses List */}
+            <FlatList
+                data={filteredCourses}
+                renderItem={renderCourseCard}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+                onRefresh={loadCourses}
+                refreshing={refreshing}
+                ListEmptyComponent={
+                    <View style={styles.emptyState}>
+                        <Ionicons
+                            name={activeTab === 'active' ? 'book-outline' : 'archive-outline'}
+                            size={64}
+                            color={colors.mutedForeground}
+                        />
+                        <Text style={styles.emptyTitle}>
+                            {activeTab === 'active' ? 'No active courses' : 'No archived courses'}
+                        </Text>
+                        <Text style={styles.emptySubtitle}>
+                            {activeTab === 'active'
+                                ? 'Create a new course to get started'
+                                : 'Long-press a course to archive it'}
+                        </Text>
+                    </View>
+                }
+            />
+
+            {/* Course Actions Modal */}
+            <Modal
+                visible={showActionsModal}
+                onClose={() => setShowActionsModal(false)}
+                title={selectedCourse?.name || selectedCourse?.code || 'Course Actions'}
+                colors={colors}
+                options={[
+                    {
+                        label: 'Edit Course',
+                        icon: 'pencil',
+                        onPress: handleEditCourse,
+                    },
+                    {
+                        label: selectedCourse?.isActive ? 'Archive' : 'Unarchive',
+                        icon: selectedCourse?.isActive ? 'archive' : 'arrow-undo',
+                        onPress: () => handleToggleArchive(),
+                    },
+                ]}
+            />
+
+            {/* Create Course Modal */}
+            <CreateCourseModal
+                visible={showCreateModal}
+                onClose={() => setShowCreateModal(false)}
+                form={createForm}
+                onSubmit={onCreateCourse}
+                loading={loading}
+                colors={colors}
+            />
+        </Container>
     );
 }
 
@@ -394,25 +407,6 @@ const getStyles = (colors: ColorScheme) =>
             flex: 1,
             justifyContent: 'center',
             alignItems: 'center',
-        },
-        swipeAction: {
-            justifyContent: 'center',
-            alignItems: 'center',
-            width: 88,
-            marginBottom: 12,
-            borderRadius: 12,
-        },
-        archiveAction: {
-            backgroundColor: '#f59e0b',
-        },
-        unarchiveAction: {
-            backgroundColor: colors.primary,
-        },
-        swipeActionText: {
-            color: '#fff',
-            fontSize: 12,
-            fontWeight: '600',
-            marginTop: 4,
         },
         emptyState: {
             alignItems: 'center',

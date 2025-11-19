@@ -5,13 +5,15 @@ import { ColorScheme } from '@/hooks/use-theme';
 import { AttendanceSession } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 interface AttendanceTabProps {
     attendanceSessions: AttendanceSession[];
     colors: ColorScheme;
     onTakeAttendance: () => void;
     onViewSession: (session: AttendanceSession) => void;
+    refreshing?: boolean;
+    onRefresh?: () => void;
 }
 
 export const AttendanceTab: React.FC<AttendanceTabProps> = ({
@@ -19,17 +21,31 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
     colors,
     onTakeAttendance,
     onViewSession,
+    refreshing = false,
+    onRefresh,
 }) => {
     const styles = getStyles(colors);
 
     return (
-        <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+            style={styles.tabContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+                onRefresh ? (
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={colors.primary}
+                    />
+                ) : undefined
+            }
+        >
             <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                     <Text style={styles.sectionTitle}>Attendance Records</Text>
-                    <Button onPress={onTakeAttendance}>
-                        <Ionicons name="add" size={20} color={colors.primaryForeground} />
-                        <Text style={{ color: colors.primaryForeground, marginLeft: 4 }}>Take Attendance</Text>
+                    <Button onPress={onTakeAttendance} style={styles.takeAttendanceBtn}>
+                        <Ionicons name="add" size={18} color={colors.primaryForeground} />
+                        <Text style={styles.buttonText}>Take Attendance</Text>
                     </Button>
                 </View>
 
@@ -44,6 +60,10 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
                         const presentCount = Object.values(session.studentStatuses).filter(s => s === 'present').length;
                         const absentCount = Object.values(session.studentStatuses).filter(s => s === 'absent').length;
 
+                        const sessionDate = session.date.toDate();
+                        const today = new Date();
+                        const isToday = sessionDate.toDateString() === today.toDateString();
+
                         return (
                             <TouchableOpacity
                                 key={session.id}
@@ -54,14 +74,25 @@ export const AttendanceTab: React.FC<AttendanceTabProps> = ({
                                     <View style={styles.attendanceHeader}>
                                         <View style={styles.attendanceDateContainer}>
                                             <Ionicons name="calendar" size={20} color={colors.primary} />
-                                            <Text style={styles.attendanceDate}>
-                                                {session.date.toDate().toLocaleDateString('en-US', {
-                                                    weekday: 'short',
-                                                    month: 'short',
-                                                    day: 'numeric',
-                                                    year: 'numeric'
-                                                })}
-                                            </Text>
+                                            <View>
+                                                <Text style={styles.attendanceDate}>
+                                                    {isToday ? (
+                                                        <Text style={styles.todayLabel}>Today</Text>
+                                                    ) : (
+                                                        sessionDate.toLocaleDateString('en-US', {
+                                                            weekday: 'short',
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            year: 'numeric'
+                                                        })
+                                                    )}
+                                                </Text>
+                                                {session.section && (
+                                                    <Text style={styles.sectionBadge}>
+                                                        Section {session.section}
+                                                    </Text>
+                                                )}
+                                            </View>
                                         </View>
                                         <View style={styles.attendanceStats}>
                                             <View style={styles.attendanceStat}>
@@ -100,11 +131,23 @@ const getStyles = (colors: ColorScheme) => StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: 16,
+        gap: 12,
     },
     sectionTitle: {
         fontSize: 18,
         fontWeight: '600',
         color: colors.foreground,
+        flex: 1,
+    },
+    takeAttendanceBtn: {
+        paddingHorizontal: 12,
+        flexShrink: 0,
+    },
+    buttonText: {
+        color: colors.primaryForeground,
+        marginLeft: 4,
+        fontSize: 14,
+        fontWeight: '500',
     },
     emptyCard: {
         padding: 40,
@@ -145,6 +188,16 @@ const getStyles = (colors: ColorScheme) => StyleSheet.create({
         fontSize: 15,
         fontWeight: '500',
         color: colors.foreground,
+    },
+    todayLabel: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: colors.primary,
+    },
+    sectionBadge: {
+        fontSize: 12,
+        color: colors.mutedForeground,
+        marginTop: 2,
     },
     attendanceStats: {
         flexDirection: 'row',

@@ -4,37 +4,23 @@ import {
     OverviewTab,
     StudentsTab
 } from '@/components/teachers/course-details';
+import { AlertDialog } from '@/components/ui/alert-dialog';
 import Button from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Container } from '@/components/ui/container';
 import { Modal } from '@/components/ui/modal';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { Text } from '@/components/ui/text';
 import { useAuth } from '@/hooks/use-auth';
 import { ColorScheme, useTheme } from '@/hooks/use-theme';
-import {
-    calculateAttendancePercentage,
-    getCourseAttendance,
-    takeAttendance,
-} from '@/services/attendance.service';
-import {
-    addStudentIdRange,
-    getCourseById,
-    getEnrolledStudents,
-    inviteTeacherToCourse,
-    updateCourseInfo
-} from '@/services/course.service';
-import {
-    batchUpdateMarks,
-    createClassTest,
-    getClassTestMarks,
-    getCourseClassTests,
-    publishClassTest,
-    updateClassTest,
-} from '@/services/ct.service';
-import { AttendanceSession, AttendanceStatus, ClassTest, Course, Mark, MarkStatus, Student } from '@/types';
+import { getCourseAttendance } from '@/services/attendance.service';
+import { addStudentIdRange, getCourseById, getEnrolledStudents, getStudentEnrollments, removeStudentIdRange, updateStudentIdRange } from '@/services/course.service';
+import { createClassTest, getClassTestMarks, getCourseClassTests } from '@/services/ct.service';
+import { exportCourseReport, exportCTMarks } from '@/services/export.service';
+import { AttendanceSession, AttendanceStatus, ClassTest, Course, Mark, MarkStatus, Student, StudentEnrollment } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
     ScrollView,
@@ -48,6 +34,7 @@ type TabType = 'overview' | 'attendance' | 'ct' | 'students';
 
 export default function TeacherCourseDetailScreen() {
     const { colors } = useTheme();
+    const router = useRouter();
     const { session: { user } } = useAuth();
     const { courseId } = useLocalSearchParams<{ courseId: string }>();
 
@@ -60,15 +47,27 @@ export default function TeacherCourseDetailScreen() {
     const [marks, setMarks] = useState<Record<string, Mark[]>>({});
     const [attendanceSessions, setAttendanceSessions] = useState<AttendanceSession[]>([]);
     const [studentAttendancePercentages, setStudentAttendancePercentages] = useState<Record<string, number>>({});
+    const [availableSections, setAvailableSections] = useState<string[]>([]);
+    const [studentEnrollments, setStudentEnrollments] = useState<StudentEnrollment[]>([]);
+    const [selectedEnrollment, setSelectedEnrollment] = useState<StudentEnrollment | null>(null);
+    const [refreshing, setRefreshing] = useState(false);
 
     // Modals
+    const [showSectionSelectModal, setShowSectionSelectModal] = useState(false);
     const [showAttendanceModal, setShowAttendanceModal] = useState(false);
     const [showCTModal, setShowCTModal] = useState(false);
     const [showCreateCTModal, setShowCreateCTModal] = useState(false);
     const [showEditCourseModal, setShowEditCourseModal] = useState(false);
     const [showInviteModal, setShowInviteModal] = useState(false);
     const [showMenuModal, setShowMenuModal] = useState(false);
+    const [showDeleteCourseConfirm, setShowDeleteCourseConfirm] = useState(false);
     const [showStudentProgressModal, setShowStudentProgressModal] = useState(false);
+    const [showAlert, setShowAlert] = useState(false);
+    const [alertConfig, setAlertConfig] = useState<{ type: 'success' | 'error' | 'warning' | 'info'; title: string; message: string }>({
+        type: 'success',
+        title: '',
+        message: ''
+    });
     const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
     const [selectedAttendanceSession, setSelectedAttendanceSession] = useState<AttendanceSession | null>(null);
     const [attendanceModalMode, setAttendanceModalMode] = useState<'view' | 'edit' | 'create'>('create');
@@ -89,15 +88,23 @@ export default function TeacherCourseDetailScreen() {
 
     // Edit course state
     const [editCourseName, setEditCourseName] = useState('');
-    const [editBestCTCount, setEditBestCTCount] = useState<number | undefined>(undefined);
+    const [editBestCTCount, setEditBestCTCount] = useState('');
+    const [editCourseCredit, setEditCourseCredit] = useState('');
 
     // Invite members state
     const [inviteType, setInviteType] = useState<'teacher' | 'student'>('student');
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteStartId, setInviteStartId] = useState('');
     const [inviteEndId, setInviteEndId] = useState('');
+    const [inviteSection, setInviteSection] = useState('');
 
     const styles = getStyles(colors);
+
+    // Helper function to show alerts
+    const showAlertMessage = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
+        setAlertConfig({ type, title, message });
+        setShowAlert(true);
+    };
 
     // Load data
     useEffect(() => {
@@ -106,76 +113,124 @@ export default function TeacherCourseDetailScreen() {
 
     const loadCourseData = async () => {
         try {
+            setRefreshing(true);
             setLoading(true);
 
-            if (!courseId || typeof courseId !== 'string') {
-                console.error('Invalid course ID');
-                return;
-            }
+            if (!courseId) return;
 
-            // Load course
+            // Load course data
             const courseData = await getCourseById(courseId);
-            if (!courseData) {
-                console.error('Course not found');
-                return;
-            }
             setCourse(courseData);
-            setBestCTCountInput(courseData.bestCTCount);
-            setEditCourseName(courseData.name);
-            setEditBestCTCount(courseData.bestCTCount);
 
-            // Load students
-            const studentsData = await getEnrolledStudents(courseId);
-            setStudents(studentsData);
+            // Load student enrollments first
+            const enrollments = await getStudentEnrollments(courseId);
+            setStudentEnrollments(enrollments);
+
+            // Load enrolled students
+            const enrolledStudents = await getEnrolledStudents(courseId);
+            setStudents(enrolledStudents);
 
             // Load class tests
-            const classTestsData = await getCourseClassTests(courseId);
-            setClassTests(classTestsData);
-
-            // Load marks for each class test
-            const marksData: Record<string, Mark[]> = {};
-            for (const ct of classTestsData) {
-                const ctMarks = await getClassTestMarks(ct.id);
-                marksData[ct.id] = ctMarks;
-            }
-            setMarks(marksData);
+            const tests = await getCourseClassTests(courseId);
+            setClassTests(tests);
 
             // Load attendance sessions
             const attendance = await getCourseAttendance(courseId);
             setAttendanceSessions(attendance);
 
-            // Load attendance percentages for each student
+            // Load marks for each class test
+            const marksData: Record<string, Mark[]> = {};
+            for (const ct of tests) {
+                const classTestMarks = await getClassTestMarks(ct.id);
+                marksData[ct.id] = classTestMarks;
+            }
+            setMarks(marksData);
+
+            // Calculate attendance percentages by student ID
             const percentages: Record<string, number> = {};
-            for (const student of studentsData) {
-                const percentage = await calculateAttendancePercentage(courseId, student.email);
-                percentages[student.email] = percentage;
+            for (const student of enrolledStudents) {
+                const studentIdStr = String(student.studentId);
+                const studentSessions = attendance.filter(
+                    session => studentIdStr in session.studentStatuses
+                );
+
+                if (studentSessions.length > 0) {
+                    const presentCount = studentSessions.filter(
+                        session => session.studentStatuses[studentIdStr] === 'present'
+                    ).length;
+                    percentages[student.email] = (presentCount / studentSessions.length) * 100;
+                } else {
+                    percentages[student.email] = 0;
+                }
             }
             setStudentAttendancePercentages(percentages);
+
+            // Load available sections from enrollments
+            const sections = Array.from(new Set(enrollments.map(e => e.section))).sort();
+            setAvailableSections(sections);
+
+            console.log('Course data loaded successfully:', {
+                course: courseData,
+                students: enrolledStudents.length,
+                enrollments: enrollments.length,
+                classTests: tests.length,
+                attendanceSessions: attendance.length,
+                sections: sections,
+            });
         } catch (error) {
             console.error('Error loading course data:', error);
+            showAlertMessage('error', 'Error', 'Failed to load course data');
         } finally {
             setLoading(false);
+            setRefreshing(false);
         }
     };
 
     const handleTakeAttendance = (session?: AttendanceSession) => {
         if (session) {
-            // Edit existing session
-            setSelectedAttendanceSession(session);
-            setAttendanceModalMode('edit');
-            setSelectedDate(session.date.toDate().toISOString().split('T')[0]);
-            const presentEmails = Object.entries(session.studentStatuses)
-                .filter(([_, status]) => status === 'present')
-                .map(([email]) => email);
-            setAttendanceMarking(new Set(presentEmails));
+            // Navigate to view attendance screen
+            handleViewAttendanceSession(session);
         } else {
-            // Create new session - mark all as present initially
-            setSelectedAttendanceSession(null);
-            setAttendanceModalMode('create');
-            setSelectedDate(new Date().toISOString().split('T')[0]);
-            setAttendanceMarking(new Set(students.map(s => s.email)));
+            // Show section selection for new attendance
+            setShowSectionSelectModal(true);
         }
-        setShowAttendanceModal(true);
+    };
+
+    const handleViewAttendanceSession = (session: AttendanceSession) => {
+        const sessionDate = session.date.toDate();
+        const today = new Date();
+        const isToday = sessionDate.toDateString() === today.toDateString();
+
+        const dateString = isToday ? 'Today' : sessionDate.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+
+        router.push({
+            pathname: '/(teacher)/screens/view_attendance',
+            params: {
+                courseId: courseId,
+                sessionId: session.id,
+                sessionDate: dateString,
+                sessionSection: session.section,
+                studentStatuses: JSON.stringify(session.studentStatuses),
+            },
+        });
+    };
+
+    const handleSectionSelected = (section: string) => {
+        setShowSectionSelectModal(false);
+        // Navigate to take attendance screen
+        router.push({
+            pathname: '/(teacher)/screens/take_attendance',
+            params: {
+                courseId: course?.id || '',
+                section: section,
+                date: new Date().toISOString().split('T')[0],
+            }
+        });
     };
 
     const toggleAttendance = (studentEmail: string) => {
@@ -196,19 +251,11 @@ export default function TeacherCourseDetailScreen() {
             studentStatuses[student.email] = attendanceMarking.has(student.email) ? 'present' : 'absent';
         });
 
-        const success = await takeAttendance(
-            course.id,
-            new Date(selectedDate),
-            user.email,
-            studentStatuses
-        );
-
-        if (success) {
-            await loadCourseData();
-            setShowAttendanceModal(false);
-            setSelectedAttendanceSession(null);
-            setAttendanceModalMode('create');
-        }
+        // This function is no longer used - attendance is now taken via the take_attendance screen
+        console.log('This attendance modal is for viewing only');
+        setShowAttendanceModal(false);
+        setSelectedAttendanceSession(null);
+        setAttendanceModalMode('create');
     };
 
     const handleAddCTMarks = (ct: ClassTest) => {
@@ -241,114 +288,146 @@ export default function TeacherCourseDetailScreen() {
         const newPublishedStatus = !ct.isPublished;
         const action = newPublishedStatus ? 'publish' : 'unpublish';
 
-        const success = await updateClassTest(ct.id, { isPublished: newPublishedStatus });
-
-        if (success) {
-            // Update local state
-            setClassTests(classTests.map(c =>
-                c.id === ct.id ? { ...c, isPublished: newPublishedStatus } : c
-            ));
-        } else {
-            console.error(`Failed to ${action} class test`);
-        }
+        // Mock: Just update local state for demonstration
+        console.log(`${action} class test (mock):`, ct.id);
+        setClassTests(classTests.map(c =>
+            c.id === ct.id ? { ...c, isPublished: newPublishedStatus } : c
+        ));
+        alert(`Class test ${action}ed! (Demo mode)`);
     };
 
     const saveCTMarks = async () => {
         if (!selectedCT || !course) return;
 
-        const marksToSave = students.map(student => ({
-            studentEmail: student.email,
-            studentId: student.studentId,
-            status: ctMarksInput[student.email]?.status || 'present',
-            marksObtained: ctMarksInput[student.email]?.status === 'present'
-                ? ctMarksInput[student.email]?.marks
-                : undefined,
-        }));
-
-        const success = await batchUpdateMarks(
-            selectedCT.id,
-            course.id,
-            marksToSave
-        );
-
-        if (success) {
-            const updatedMarks = await getClassTestMarks(selectedCT.id);
-            setMarks({ ...marks, [selectedCT.id]: updatedMarks });
-            setShowCTModal(false);
-        }
+        // This function is no longer used - marks are now entered via the ct_details screen
+        console.log('This CT modal is for viewing only');
+        setShowCTModal(false);
+        setSelectedCT(null);
     };
 
     const handleCreateCT = async () => {
         if (!newCTName.trim() || !newCTMaxMarks || !course || !user?.email) return;
 
         const maxMarks = parseInt(newCTMaxMarks);
-        if (isNaN(maxMarks) || maxMarks <= 0) return;
-
-        // Build scheduled Date from inputs
-        let scheduledDate: Date | undefined = undefined;
-        if (newCTDate && newCTTime) {
-            const dateTimeString = `${newCTDate}T${newCTTime}:00`;
-            const dt = new Date(dateTimeString);
-            if (!isNaN(dt.getTime())) {
-                scheduledDate = dt;
-            }
+        if (isNaN(maxMarks) || maxMarks <= 0) {
+            showAlertMessage('error', 'Error', 'Invalid marks value');
+            return;
         }
 
-        const newCT = await createClassTest(
-            course.id,
-            newCTName.trim(),
-            maxMarks,
-            user.email,
-            scheduledDate,
-            newCTDescription.trim() || undefined
-        );
+        try {
+            setLoading(true);
+            // Combine date and time
+            const ctDateTime = new Date(`${newCTDate}T${newCTTime}:00`);
 
-        if (newCT) {
-            // Optionally publish immediately so it appears in upcoming lists
-            if (newCTPublishNow) {
-                await publishClassTest(newCT.id);
-                newCT.isPublished = true; // reflect locally in memory
+            const newCT = await createClassTest(
+                course.id,
+                newCTName.trim(),
+                maxMarks,
+                user.email,
+                ctDateTime,
+                newCTDescription.trim() || undefined
+            );
+
+            if (newCT) {
+                showAlertMessage('success', 'Success', 'Class test created successfully!');
+                // Reset form
+                setNewCTName('');
+                setNewCTDescription('');
+                setNewCTMaxMarks('20');
+                setNewCTDate(new Date().toISOString().split('T')[0]);
+                setNewCTTime('10:00');
+                setNewCTPublishNow(false);
+                setShowCreateCTModal(false);
+                // Reload course data
+                await loadCourseData();
+            } else {
+                showAlertMessage('error', 'Error', 'Failed to create class test');
             }
-            setClassTests([...classTests, newCT]);
-            setMarks({ ...marks, [newCT.id]: [] });
-            setNewCTName('');
-            setNewCTDescription('');
-            setNewCTMaxMarks('20');
-            setNewCTDate(new Date().toISOString().split('T')[0]);
-            setNewCTTime('10:00');
-            setNewCTPublishNow(false);
-            setShowCreateCTModal(false);
+        } catch (error) {
+            console.error('Error creating CT:', error);
+            showAlertMessage('error', 'Error', 'Failed to create class test');
+        } finally {
+            setLoading(false);
         }
     };
 
     const handleEditCourse = () => {
         if (course) {
             setEditCourseName(course.name);
-            setEditBestCTCount(course.bestCTCount);
+            setEditBestCTCount(course.bestCTCount?.toString() || '');
+            setEditCourseCredit(course.credit.toString());
             setShowEditCourseModal(true);
+        }
+    };
+
+    const handleExportCTMarks = async (ct: ClassTest) => {
+        try {
+            await exportCTMarks(ct);
+            showAlertMessage('success', 'Success', 'CT marks exported successfully!');
+        } catch (error) {
+            console.error('Error exporting CT marks:', error);
+            showAlertMessage('error', 'Error', 'Failed to export CT marks. Please try again.');
+        }
+    };
+
+    const handleExportCourseReport = async () => {
+        try {
+            if (!courseId) return;
+
+            await exportCourseReport(courseId);
+            showAlertMessage('success', 'Success', 'Course report exported successfully!');
+        } catch (error) {
+            console.error('Error exporting course report:', error);
+            showAlertMessage('error', 'Error', 'Failed to export course report. Please try again.');
         }
     };
 
     const saveEditCourse = async () => {
         if (!course || !user?.email) return;
 
-        const success = await updateCourseInfo(
-            course.id,
-            {
-                name: editCourseName,
-                bestCTCount: editBestCTCount,
-            },
-            user.email
-        );
+        // Validate credit
+        const creditNum = parseFloat(editCourseCredit);
+        if (isNaN(creditNum) || creditNum <= 0 || creditNum > 10) {
+            showAlertMessage('error', 'Invalid Credit', 'Credit must be a positive number not exceeding 10');
+            return;
+        }
 
-        if (success) {
-            setCourse({
-                ...course,
-                name: editCourseName,
-                bestCTCount: editBestCTCount,
-            });
-            setShowEditCourseModal(false);
-            await loadCourseData();
+        // Parse bestCTCount (optional)
+        let bestCTCountNum: number | undefined = undefined;
+        if (editBestCTCount.trim() !== '') {
+            bestCTCountNum = parseInt(editBestCTCount);
+            if (isNaN(bestCTCountNum) || bestCTCountNum <= 0) {
+                showAlertMessage('error', 'Invalid Best CT Count', 'Best CT Count must be a positive number');
+                return;
+            }
+        }
+
+        try {
+            setLoading(true);
+            const { updateCourseInfo } = await import('@/services/course.service');
+
+            const success = await updateCourseInfo(
+                course.id,
+                {
+                    name: editCourseName.trim(),
+                    bestCTCount: bestCTCountNum,
+                    credit: creditNum,
+                },
+                user.email
+            );
+
+            if (success) {
+                showAlertMessage('success', 'Success', 'Course updated successfully!');
+                setShowEditCourseModal(false);
+                await loadCourseData();
+            } else {
+                showAlertMessage('error', 'Error', 'Failed to update course');
+            }
+        } catch (error) {
+            console.error('Error updating course:', error);
+            showAlertMessage('error', 'Error', 'Failed to update course');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -357,28 +436,24 @@ export default function TeacherCourseDetailScreen() {
 
         if (inviteType === 'teacher') {
             if (!inviteEmail.trim()) {
-                alert('Please enter teacher email');
+                showAlertMessage('error', 'Error', 'Please enter teacher email');
                 return;
             }
 
-            const success = await inviteTeacherToCourse(
-                course.id,
-                inviteEmail.trim(),
-                user.email,
-                user.name
-            );
-
-            if (success) {
-                alert('Teacher invitation sent successfully');
-                setShowInviteModal(false);
-                setInviteEmail('');
-            } else {
-                alert('Failed to send invitation');
-            }
+            // TODO: Implement teacher invitation
+            console.log('Inviting teacher:', inviteEmail.trim());
+            showAlertMessage('info', 'Coming Soon', 'Teacher invitation feature will be available soon');
+            setShowInviteModal(false);
+            setInviteEmail('');
         } else {
             // Student enrollment
             if (!inviteStartId.trim() || !inviteEndId.trim()) {
-                alert('Please enter student ID range');
+                showAlertMessage('error', 'Error', 'Please enter student ID range');
+                return;
+            }
+
+            if (!inviteSection.trim()) {
+                showAlertMessage('error', 'Error', 'Please select a section');
                 return;
             }
 
@@ -386,59 +461,146 @@ export default function TeacherCourseDetailScreen() {
             const endId = parseInt(inviteEndId);
 
             if (isNaN(startId) || isNaN(endId)) {
-                alert('Invalid student ID range');
+                showAlertMessage('error', 'Error', 'Invalid student ID range');
                 return;
             }
 
             if (startId > endId) {
-                alert('Start ID must be less than or equal to End ID');
+                showAlertMessage('error', 'Error', 'Start ID must be less than or equal to End ID');
                 return;
             }
 
-            const success = await addStudentIdRange(
-                course.id,
-                startId,
-                endId,
-                user.email
-            );
+            try {
+                setLoading(true);
+                const success = await addStudentIdRange(
+                    course.id,
+                    startId,
+                    endId,
+                    inviteSection.trim().toUpperCase(),
+                    user.email!
+                );
 
-            if (success) {
-                alert('Students enrolled successfully');
-                setShowInviteModal(false);
-                setInviteStartId('');
-                setInviteEndId('');
-                await loadCourseData();
-            } else {
-                alert('Failed to enroll students');
+                if (success) {
+                    showAlertMessage('success', 'Success', `Students enrolled in Section ${inviteSection}!`);
+                    setShowInviteModal(false);
+                    setInviteStartId('');
+                    setInviteEndId('');
+                    setInviteSection('');
+                    await loadCourseData(); // Reload data
+                } else {
+                    showAlertMessage('error', 'Error', 'Failed to add student ID range. Check for overlaps.');
+                }
+            } catch (error) {
+                console.error('Error adding student ID range:', error);
+                showAlertMessage('error', 'Error', 'Failed to add student ID range');
+            } finally {
+                setLoading(false);
             }
         }
     };
 
+    const handleEnrollmentPress = (enrollment: StudentEnrollment) => {
+        setSelectedEnrollment(enrollment);
+        setInviteStartId(enrollment.startId.toString());
+        setInviteEndId(enrollment.endId.toString());
+        setInviteSection(enrollment.section);
+        setShowInviteModal(true);
+    };
+
+    const handleAddEnrollment = () => {
+        setSelectedEnrollment(null);
+        setInviteStartId('');
+        setInviteEndId('');
+        setInviteSection('');
+        setInviteType('student');
+        setShowInviteModal(true);
+    };
+
+    const handleUpdateEnrollment = async () => {
+        if (!course || !user || !selectedEnrollment) return;
+
+        const startId = parseInt(inviteStartId);
+        const endId = parseInt(inviteEndId);
+
+        if (isNaN(startId) || isNaN(endId) || startId > endId) {
+            showAlertMessage('error', 'Error', 'Invalid student ID range');
+            return;
+        }
+
+        if (!inviteSection.trim()) {
+            showAlertMessage('error', 'Error', 'Please select a section');
+            return;
+        }
+
+        try {
+            setLoading(true);
+            const success = await updateStudentIdRange(
+                course.id,
+                selectedEnrollment.id,
+                startId,
+                endId,
+                inviteSection.trim().toUpperCase(),
+                user.email!
+            );
+
+            if (success) {
+                showAlertMessage('success', 'Success', 'Student ID range updated!');
+                setShowInviteModal(false);
+                setSelectedEnrollment(null);
+                setInviteStartId('');
+                setInviteEndId('');
+                setInviteSection('');
+                await loadCourseData();
+            } else {
+                showAlertMessage('error', 'Error', 'Failed to update student ID range');
+            }
+        } catch (error) {
+            console.error('Error updating student ID range:', error);
+            showAlertMessage('error', 'Error', 'Failed to update student ID range');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteEnrollment = async () => {
+        if (!course || !user || !selectedEnrollment) return;
+
+        try {
+            setLoading(true);
+            const success = await removeStudentIdRange(
+                course.id,
+                selectedEnrollment.id,
+                user.email!
+            );
+
+            if (success) {
+                showAlertMessage('success', 'Success', 'Student ID range deleted!');
+                setShowInviteModal(false);
+                setSelectedEnrollment(null);
+                await loadCourseData();
+            } else {
+                showAlertMessage('error', 'Error', 'Failed to delete student ID range');
+            }
+        } catch (error) {
+            console.error('Error deleting student ID range:', error);
+            showAlertMessage('error', 'Error', 'Failed to delete student ID range');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const calculateStudentBestCTAverage = (studentEmail: string): number => {
-        const studentMarks = Object.entries(marks)
-            .flatMap(([_, ctMarks]) => ctMarks)
-            .filter(mark => mark.studentEmail === studentEmail && mark.status === 'present' && mark.marksObtained !== undefined)
-            .map(mark => mark.marksObtained!);
-
-        if (studentMarks.length === 0) return 0;
-
-        studentMarks.sort((a, b) => b - a);
-
-        const marksToConsider = course?.bestCTCount
-            ? studentMarks.slice(0, Math.min(course.bestCTCount, studentMarks.length))
-            : studentMarks;
-
-        return marksToConsider.reduce((a, b) => a + b, 0) / marksToConsider.length;
+        // Use mock calculation function
+        // TODO: Implement real best CT average calculation using service
+        // return await calculateStudentBestCTAverage(courseId, studentEmail, course?.bestCTCount);
+        return 0;
     };
 
     const calculateCTAverage = (ctId: string): number => {
-        const ctMarks = marks[ctId] || [];
-        const presentMarks = ctMarks.filter(m => m.status === 'present' && m.marksObtained !== undefined);
-
-        if (presentMarks.length === 0) return 0;
-
-        const sum = presentMarks.reduce((acc, m) => acc + (m.marksObtained || 0), 0);
-        return sum / presentMarks.length;
+        // Use mock calculation function
+        // TODO: Implement real CT average calculation using service
+        // return await calculateCTAverage(ctId);
+        return 0;
     };
 
     return (
@@ -501,6 +663,9 @@ export default function TeacherCourseDetailScreen() {
                         setAttendanceModalMode('view');
                         setShowAttendanceModal(true);
                     }}
+                    onExportReport={() => handleExportCourseReport()}
+                    refreshing={refreshing}
+                    onRefresh={loadCourseData}
                 />
             )}
             {activeTab === 'attendance' && (
@@ -508,11 +673,9 @@ export default function TeacherCourseDetailScreen() {
                     attendanceSessions={attendanceSessions}
                     colors={colors}
                     onTakeAttendance={() => handleTakeAttendance()}
-                    onViewSession={(session) => {
-                        setSelectedAttendanceSession(session);
-                        setAttendanceModalMode('view');
-                        setShowAttendanceModal(true);
-                    }}
+                    onViewSession={handleViewAttendanceSession}
+                    refreshing={refreshing}
+                    onRefresh={loadCourseData}
                 />
             )}
             {activeTab === 'ct' && (
@@ -521,9 +684,37 @@ export default function TeacherCourseDetailScreen() {
                     marks={marks}
                     colors={colors}
                     onCreateCT={() => setShowCreateCTModal(true)}
-                    onAddMarks={(ct) => handleAddCTMarks(ct)}
-                    onPublishToggle={(ct) => handlePublishToggle(ct)}
-                    calculateCTAverage={calculateCTAverage}
+                    onCTClick={(ct) => {
+                        router.push({
+                            pathname: '/(teacher)/screens/ct_details',
+                            params: { ctId: ct.id, courseId: course?.id || '' },
+                        });
+                    }}
+                    onEditCT={(ct) => {
+                        showAlertMessage('info', 'Info', 'Edit CT functionality - coming soon');
+                    }}
+                    onDeleteCT={async (ct) => {
+                        try {
+                            setLoading(true);
+                            const { deleteClassTest } = await import('@/services/ct.service');
+                            const success = await deleteClassTest(ct.id);
+
+                            if (success) {
+                                showAlertMessage('success', 'Success', 'CT deleted successfully!');
+                                await loadCourseData();
+                            } else {
+                                showAlertMessage('error', 'Error', 'Failed to delete CT');
+                            }
+                        } catch (error) {
+                            console.error('Error deleting CT:', error);
+                            showAlertMessage('error', 'Error', 'Failed to delete CT');
+                        } finally {
+                            setLoading(false);
+                        }
+                    }}
+                    onExportCT={(ct) => handleExportCTMarks(ct)}
+                    refreshing={refreshing}
+                    onRefresh={loadCourseData}
                 />
             )}
             {activeTab === 'students' && (
@@ -538,6 +729,11 @@ export default function TeacherCourseDetailScreen() {
                         setShowStudentProgressModal(true);
                     }}
                     calculateStudentBestCTAverage={calculateStudentBestCTAverage}
+                    enrollments={studentEnrollments}
+                    onEnrollmentPress={handleEnrollmentPress}
+                    onAddEnrollment={handleAddEnrollment}
+                    refreshing={refreshing}
+                    onRefresh={loadCourseData}
                 />
             )}
 
@@ -554,64 +750,72 @@ export default function TeacherCourseDetailScreen() {
                 colors={colors}
             >
                 {attendanceModalMode === 'view' && selectedAttendanceSession ? (
-                    // View Mode
+                    // View Mode - Grid Layout
                     <>
-                        <Card style={[styles.infoCard, { borderWidth: 1, marginBottom: 16 }]}>
-                            <View style={styles.infoRow}>
-                                <Text style={styles.infoLabel}>Date</Text>
-                                <Text style={styles.infoValue}>
-                                    {selectedAttendanceSession.date.toDate().toLocaleDateString('en-US', {
-                                        month: 'long',
-                                        day: 'numeric',
-                                        year: 'numeric'
-                                    })}
-                                </Text>
-                            </View>
-                            <View style={[styles.infoRow, { marginTop: 8 }]}>
-                                <Text style={styles.infoLabel}>Present</Text>
-                                <Text style={[styles.infoValue, { color: colors.chart3 }]}>
+                        {/* Stats Bar */}
+                        <View style={styles.attendanceStatsBar}>
+                            <View style={styles.attendanceStatItem}>
+                                <Text style={[styles.attendanceStatValue, { color: colors.chart3 }]}>
                                     {Object.values(selectedAttendanceSession.studentStatuses).filter(s => s === 'present').length}
                                 </Text>
+                                <Text style={styles.attendanceStatLabel}>Present</Text>
                             </View>
-                            <View style={[styles.infoRow, { marginTop: 8 }]}>
-                                <Text style={styles.infoLabel}>Absent</Text>
-                                <Text style={[styles.infoValue, { color: colors.destructive }]}>
+                            <View style={styles.attendanceStatDivider} />
+                            <View style={styles.attendanceStatItem}>
+                                <Text style={[styles.attendanceStatValue, { color: colors.destructive }]}>
                                     {Object.values(selectedAttendanceSession.studentStatuses).filter(s => s === 'absent').length}
                                 </Text>
+                                <Text style={styles.attendanceStatLabel}>Absent</Text>
                             </View>
-                        </Card>
-
-                        <View style={{ marginBottom: 16 }}>
-                            <Text style={styles.modalSectionTitle}>Students</Text>
-                            {students.map((stu) => {
-                                const status = selectedAttendanceSession.studentStatuses[stu.email];
-                                return (
-                                    <Card key={stu.email} style={{ padding: 12, marginBottom: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
-                                        <View style={styles.studentRow}>
-                                            <View style={styles.studentInfo}>
-                                                <View style={styles.studentAvatar}>
-                                                    <Text style={styles.studentAvatarText}>
-                                                        {stu.name.split(' ').map(n => n[0]).join('')}
-                                                    </Text>
-                                                </View>
-                                                <View>
-                                                    <Text style={styles.studentName}>{stu.name}</Text>
-                                                    <Text style={styles.studentId}>{stu.studentId}</Text>
-                                                </View>
-                                            </View>
-                                            <Text style={[
-                                                styles.statusBadge,
-                                                { color: status === 'present' ? colors.chart3 : colors.destructive }
-                                            ]}>
-                                                {status === 'present' ? 'Present' : 'Absent'}
-                                            </Text>
-                                        </View>
-                                    </Card>
-                                );
-                            })}
+                            <View style={styles.attendanceStatDivider} />
+                            <View style={styles.attendanceStatItem}>
+                                <Text style={[styles.attendanceStatValue, { color: colors.foreground }]}>
+                                    {Object.keys(selectedAttendanceSession.studentStatuses).length}
+                                </Text>
+                                <Text style={styles.attendanceStatLabel}>Total</Text>
+                            </View>
                         </View>
 
-                        <Button onPress={() => handleTakeAttendance(selectedAttendanceSession)}>
+                        {/* Student Grid - Scrollable */}
+                        <View style={{ flex: 1, maxHeight: 450 }}>
+                            <ScrollView
+                                showsVerticalScrollIndicator={true}
+                                style={{ flex: 1 }}
+                            >
+                                <View style={styles.attendanceGridContainer}>
+                                    {Object.entries(selectedAttendanceSession.studentStatuses)
+                                        .sort((a, b) => {
+                                            // Sort by student ID (key is studentId as string)
+                                            const idA = parseInt(a[0]) || 0;
+                                            const idB = parseInt(b[0]) || 0;
+                                            return idA - idB;
+                                        })
+                                        .map(([studentIdStr, status]) => {
+                                            const studentId = parseInt(studentIdStr) || 0;
+                                            const roll = studentId > 0 ? String(studentId).slice(-3) : '???';
+                                            const isPresent = status === 'present';
+
+                                            return (
+                                                <View
+                                                    key={studentIdStr}
+                                                    style={[
+                                                        styles.attendanceTile,
+                                                        {
+                                                            backgroundColor: isPresent ? '#22c55e' : '#ef4444',
+                                                        }
+                                                    ]}
+                                                >
+                                                    <Text style={styles.attendanceTileText}>
+                                                        {roll}
+                                                    </Text>
+                                                </View>
+                                            );
+                                        })}
+                                </View>
+                            </ScrollView>
+                        </View>
+
+                        <Button onPress={() => handleTakeAttendance(selectedAttendanceSession)} style={{ marginTop: 16 }}>
                             <Ionicons name="create-outline" size={20} color={colors.primaryForeground} />
                             <Text style={{ color: colors.primaryForeground, marginLeft: 8 }}>Edit Attendance</Text>
                         </Button>
@@ -825,36 +1029,36 @@ export default function TeacherCourseDetailScreen() {
                 </ScrollView>
             </Modal>
 
-            {/* Menu Modal */}
+            {/* Course Actions Menu */}
             <Modal
                 visible={showMenuModal}
                 onClose={() => setShowMenuModal(false)}
                 title="Course Actions"
                 colors={colors}
-                maxHeight="40%"
-            >
-                <TouchableOpacity
-                    style={styles.menuItem}
-                    onPress={() => {
-                        setShowMenuModal(false);
-                        handleEditCourse();
-                    }}
-                >
-                    <Ionicons name="create-outline" size={20} color={colors.foreground} />
-                    <Text style={styles.menuItemText}>Edit Course</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={styles.menuItem}
-                    onPress={() => {
-                        setShowMenuModal(false);
-                        setShowInviteModal(true);
-                    }}
-                >
-                    <Ionicons name="person-add-outline" size={20} color={colors.foreground} />
-                    <Text style={styles.menuItemText}>Invite Members</Text>
-                </TouchableOpacity>
-            </Modal>
+                options={[
+                    {
+                        label: 'Edit Course',
+                        icon: 'create-outline',
+                        onPress: handleEditCourse,
+                    },
+                    {
+                        label: 'Invite Members',
+                        icon: 'person-add-outline',
+                        onPress: () => setShowInviteModal(true),
+                    },
+                    {
+                        label: 'Archive Course',
+                        icon: 'archive-outline',
+                        onPress: () => showAlertMessage('info', 'Info', 'Archive course functionality - coming soon'),
+                    },
+                    {
+                        label: 'Delete Course',
+                        icon: 'trash-outline',
+                        destructive: true,
+                        onPress: () => setShowDeleteCourseConfirm(true),
+                    },
+                ]}
+            />
 
             {/* Edit Course Modal */}
             <Modal
@@ -865,6 +1069,16 @@ export default function TeacherCourseDetailScreen() {
                 scrollable={false}
             >
                 <ScrollView showsVerticalScrollIndicator={false}>
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Course Code</Text>
+                        <TextInput
+                            style={[styles.textInput, { opacity: 0.6 }]}
+                            value={course?.code || ''}
+                            editable={false}
+                            placeholderTextColor={colors.mutedForeground}
+                        />
+                    </View>
+
                     <View style={styles.inputGroup}>
                         <Text style={styles.inputLabel}>Course Name</Text>
                         <TextInput
@@ -877,40 +1091,33 @@ export default function TeacherCourseDetailScreen() {
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>Best CT Count</Text>
-                        <Text style={styles.inputDescription}>
-                            Select how many best CTs to count for final grade
-                        </Text>
-                        <View style={styles.counterContainer}>
-                            <TouchableOpacity
-                                style={styles.counterButton}
-                                onPress={() => setEditBestCTCount(editBestCTCount ? Math.max(1, editBestCTCount - 1) : classTests.length)}
-                            >
-                                <Ionicons name="remove" size={24} color={colors.primary} />
-                            </TouchableOpacity>
-                            <Text style={styles.counterValue}>
-                                {editBestCTCount || 'All'}
-                            </Text>
-                            <TouchableOpacity
-                                style={styles.counterButton}
-                                onPress={() => setEditBestCTCount((editBestCTCount || 0) + 1)}
-                            >
-                                <Ionicons name="add" size={24} color={colors.primary} />
-                            </TouchableOpacity>
-                        </View>
-                        {editBestCTCount && (
-                            <TouchableOpacity
-                                style={{ alignSelf: 'center', marginTop: 8 }}
-                                onPress={() => setEditBestCTCount(undefined)}
-                            >
-                                <Text style={{ color: colors.mutedForeground, fontSize: 13 }}>
-                                    Reset to all CTs
-                                </Text>
-                            </TouchableOpacity>
-                        )}
+                        <Text style={styles.inputLabel}>Credit</Text>
+                        <TextInput
+                            style={styles.textInput}
+                            value={editCourseCredit}
+                            onChangeText={setEditCourseCredit}
+                            keyboardType="decimal-pad"
+                            placeholder="e.g., 3.0"
+                            placeholderTextColor={colors.mutedForeground}
+                        />
                     </View>
 
-                    <Button onPress={saveEditCourse}>
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Best CT Count (Optional)</Text>
+                        <TextInput
+                            style={styles.textInput}
+                            value={editBestCTCount}
+                            onChangeText={setEditBestCTCount}
+                            keyboardType="number-pad"
+                            placeholder="Leave empty to count all CTs"
+                            placeholderTextColor={colors.mutedForeground}
+                        />
+                        <Text style={styles.inputDescription}>
+                            Number of best CTs to count for final grade (leave empty for all)
+                        </Text>
+                    </View>
+
+                    <Button onPress={saveEditCourse} loading={loading} disabled={loading}>
                         Save Changes
                     </Button>
                 </ScrollView>
@@ -939,8 +1146,9 @@ export default function TeacherCourseDetailScreen() {
                                 <Text style={styles.infoLabel}>Attendance</Text>
                                 <Text style={styles.infoValue}>
                                     {(() => {
+                                        const studentIdStr = String(selectedStudent.studentId);
                                         const total = attendanceSessions.length;
-                                        const present = attendanceSessions.filter(s => s.studentStatuses[selectedStudent.email] === 'present').length;
+                                        const present = attendanceSessions.filter(s => s.studentStatuses[studentIdStr] === 'present').length;
                                         const percent = total > 0 ? Math.round((present / total) * 100) : 0;
                                         return `${present}/${total} (${percent}%)`;
                                     })()}
@@ -950,20 +1158,23 @@ export default function TeacherCourseDetailScreen() {
 
                         <View style={{ marginBottom: 16 }}>
                             <Text style={styles.modalSectionTitle}>Class Tests</Text>
-                            {classTests.map(ct => {
-                                const ctMarks = marks[ct.id] || [];
-                                const m = ctMarks.find(x => x.studentEmail === selectedStudent.email);
-                                return (
+                            {classTests
+                                .map(ct => {
+                                    const ctMarks = marks[ct.id] || [];
+                                    const m = ctMarks.find(x => x.studentEmail === selectedStudent.email);
+                                    return { ct, m };
+                                })
+                                .filter(({ m }) => m && (m.status === 'absent' || (m.status === 'present' && m.marksObtained !== undefined)))
+                                .map(({ ct, m }) => (
                                     <Card key={ct.id} style={{ padding: 12, marginBottom: 8, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
                                         <View style={styles.infoRow}>
                                             <Text style={styles.infoLabel}>{ct.name}</Text>
                                             <Text style={styles.infoValue}>
-                                                {m ? (m.status === 'present' && m.marksObtained !== undefined ? `${m.marksObtained}/${ct.totalMarks}` : m.status === 'absent' ? 'Absent' : '—') : '—'}
+                                                {m!.status === 'present' && m!.marksObtained !== undefined ? `${m!.marksObtained}/${ct.totalMarks}` : 'Absent'}
                                             </Text>
                                         </View>
                                     </Card>
-                                );
-                            })}
+                                ))}
                         </View>
                     </ScrollView>
                 )}
@@ -972,48 +1183,53 @@ export default function TeacherCourseDetailScreen() {
             {/* Invite Members Modal */}
             <Modal
                 visible={showInviteModal}
-                onClose={() => setShowInviteModal(false)}
-                title="Invite Members"
+                onClose={() => {
+                    setShowInviteModal(false);
+                    setSelectedEnrollment(null);
+                }}
+                title={selectedEnrollment ? 'Edit Student Range' : 'Invite Members'}
                 colors={colors}
                 scrollable={false}
             >
                 <ScrollView showsVerticalScrollIndicator={false}>
-                    <View style={styles.typeToggle}>
-                        <TouchableOpacity
-                            style={[
-                                styles.typeButton,
-                                inviteType === 'student' && styles.typeButtonActive,
-                            ]}
-                            onPress={() => setInviteType('student')}
-                        >
-                            <Text
+                    {!selectedEnrollment && (
+                        <View style={styles.typeToggle}>
+                            <TouchableOpacity
                                 style={[
-                                    styles.typeButtonText,
-                                    inviteType === 'student' && styles.typeButtonTextActive,
+                                    styles.typeButton,
+                                    inviteType === 'student' && styles.typeButtonActive,
                                 ]}
+                                onPress={() => setInviteType('student')}
                             >
-                                Students
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[
-                                styles.typeButton,
-                                inviteType === 'teacher' && styles.typeButtonActive,
-                            ]}
-                            onPress={() => setInviteType('teacher')}
-                        >
-                            <Text
+                                <Text
+                                    style={[
+                                        styles.typeButtonText,
+                                        inviteType === 'student' && styles.typeButtonTextActive,
+                                    ]}
+                                >
+                                    Students
+                                </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
                                 style={[
-                                    styles.typeButtonText,
-                                    inviteType === 'teacher' && styles.typeButtonTextActive,
+                                    styles.typeButton,
+                                    inviteType === 'teacher' && styles.typeButtonActive,
                                 ]}
+                                onPress={() => setInviteType('teacher')}
                             >
-                                Teachers
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
+                                <Text
+                                    style={[
+                                        styles.typeButtonText,
+                                        inviteType === 'teacher' && styles.typeButtonTextActive,
+                                    ]}
+                                >
+                                    Teachers
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
 
-                    {inviteType === 'teacher' ? (
+                    {inviteType === 'teacher' && !selectedEnrollment ? (
                         <View style={styles.inputGroup}>
                             <Text style={styles.inputLabel}>Teacher Email</Text>
                             <TextInput
@@ -1028,6 +1244,18 @@ export default function TeacherCourseDetailScreen() {
                         </View>
                     ) : (
                         <>
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.inputLabel}>Section</Text>
+                                <TextInput
+                                    style={styles.textInput}
+                                    placeholder="e.g., A or B"
+                                    placeholderTextColor={colors.mutedForeground}
+                                    value={inviteSection}
+                                    onChangeText={setInviteSection}
+                                    autoCapitalize="characters"
+                                />
+                            </View>
+
                             <View style={styles.inputGroup}>
                                 <Text style={styles.inputLabel}>Start Student ID</Text>
                                 <TextInput
@@ -1054,11 +1282,86 @@ export default function TeacherCourseDetailScreen() {
                         </>
                     )}
 
-                    <Button onPress={handleInviteMembers}>
-                        {inviteType === 'teacher' ? 'Send Invitation' : 'Enroll Students'}
-                    </Button>
+                    {selectedEnrollment ? (
+                        <>
+                            <Button onPress={handleUpdateEnrollment}>
+                                Update Range
+                            </Button>
+                            <Button
+                                onPress={handleDeleteEnrollment}
+                                style={{ backgroundColor: colors.destructive, marginTop: 12 }}
+                            >
+                                Delete Range
+                            </Button>
+                        </>
+                    ) : (
+                        <Button onPress={handleInviteMembers}>
+                            {inviteType === 'teacher' ? 'Send Invitation' : 'Enroll Students'}
+                        </Button>
+                    )}
                 </ScrollView>
             </Modal>
+
+            {/* Section Selection Modal */}
+            <Modal
+                visible={showSectionSelectModal}
+                onClose={() => setShowSectionSelectModal(false)}
+                title="Select Section"
+                colors={colors}
+                scrollable={false}
+            >
+                <View style={styles.sectionsList}>
+                    {availableSections.map((section) => (
+                        <TouchableOpacity
+                            key={section}
+                            style={styles.sectionButton}
+                            onPress={() => handleSectionSelected(section)}
+                        >
+                            <Text style={styles.sectionButtonText}>Section {section}</Text>
+                            <Text style={styles.sectionButtonArrow}>→</Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            </Modal>
+
+            <ConfirmDialog
+                visible={showDeleteCourseConfirm}
+                title="Delete Course"
+                message="Are you sure you want to delete this course? This action cannot be undone and all data will be lost."
+                onConfirm={async () => {
+                    setShowDeleteCourseConfirm(false);
+                    if (!course || !user?.email) return;
+
+                    try {
+                        setLoading(true);
+                        const { deleteCourse } = await import('@/services/course.service');
+                        const success = await deleteCourse(course.id, user.email);
+
+                        if (success) {
+                            showAlertMessage('success', 'Success', 'Course deleted successfully!');
+                            setTimeout(() => router.back(), 1500);
+                        } else {
+                            showAlertMessage('error', 'Error', 'Failed to delete course. Only the owner can delete.');
+                        }
+                    } catch (error) {
+                        console.error('Error deleting course:', error);
+                        showAlertMessage('error', 'Error', 'Failed to delete course');
+                    } finally {
+                        setLoading(false);
+                    }
+                }}
+                onCancel={() => setShowDeleteCourseConfirm(false)}
+                confirmText="Delete"
+                destructive
+            />
+
+            <AlertDialog
+                visible={showAlert}
+                type={alertConfig.type}
+                title={alertConfig.title}
+                message={alertConfig.message}
+                onClose={() => setShowAlert(false)}
+            />
         </Container>
     );
 }
@@ -1378,5 +1681,78 @@ const getStyles = (colors: ColorScheme) => StyleSheet.create({
     },
     typeButtonTextActive: {
         color: colors.primaryForeground,
+    },
+    sectionsList: {
+        gap: 12,
+    },
+    sectionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 16,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.background,
+    },
+    sectionButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: colors.foreground,
+    },
+    sectionButtonArrow: {
+        fontSize: 20,
+        color: colors.primary,
+    },
+    attendanceStatsBar: {
+        flexDirection: 'row',
+        backgroundColor: colors.card,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 8,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: colors.border,
+        justifyContent: 'space-around',
+        alignItems: 'center',
+    },
+    attendanceStatItem: {
+        alignItems: 'center',
+        flex: 1,
+    },
+    attendanceStatValue: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        marginBottom: 2,
+    },
+    attendanceStatLabel: {
+        fontSize: 10,
+        color: colors.mutedForeground,
+        fontWeight: '500',
+    },
+    attendanceStatDivider: {
+        width: 1,
+        height: 30,
+        backgroundColor: colors.border,
+    },
+    attendanceGridContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        padding: 8,
+        gap: 6,
+    },
+    attendanceTile: {
+        width: '14%',
+        aspectRatio: 1,
+        borderRadius: 8,
+        padding: 4,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    attendanceTileText: {
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#FFFFFF',
+        textAlign: 'center',
     },
 });

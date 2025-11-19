@@ -12,16 +12,27 @@ import {
 } from 'react-native';
 import { Text } from './text';
 
+export interface ModalOption {
+    label: string;
+    onPress: () => void;
+    icon?: keyof typeof Ionicons.glyphMap;
+    destructive?: boolean;
+    disabled?: boolean;
+}
+
 interface ModalProps {
     visible: boolean;
     onClose: () => void;
     title: string;
     subtitle?: string;
-    children: React.ReactNode;
+    children?: React.ReactNode;
     colors: ColorScheme;
     scrollable?: boolean;
     contentStyle?: ViewStyle;
     maxHeight?: DimensionValue;
+    // ActionSheet-style options
+    options?: ModalOption[];
+    message?: string;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -34,13 +45,22 @@ export const Modal: React.FC<ModalProps> = ({
     scrollable = true,
     contentStyle,
     maxHeight = '85%',
+    options,
+    message,
 }) => {
     const styles = getStyles(colors, maxHeight);
+
+    const handleOptionPress = (option: ModalOption) => {
+        if (option.disabled) return;
+        onClose();
+        // Delay the action slightly to allow modal to close smoothly
+        setTimeout(() => option.onPress(), 100);
+    };
 
     return (
         <RNModal
             visible={visible}
-            animationType="slide"
+            animationType="fade"
             transparent={true}
             onRequestClose={onClose}
         >
@@ -60,18 +80,65 @@ export const Modal: React.FC<ModalProps> = ({
                             {subtitle && (
                                 <Text style={styles.modalSubtitle}>{subtitle}</Text>
                             )}
+                            {message && (
+                                <Text style={styles.modalMessage}>{message}</Text>
+                            )}
                         </View>
-                        <TouchableOpacity onPress={onClose}>
+                        <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                             <Ionicons name="close" size={24} color={colors.foreground} />
                         </TouchableOpacity>
                     </View>
 
-                    {scrollable ? (
-                        <ScrollView showsVerticalScrollIndicator={false}>
-                            {children}
+                    {/* Options mode (ActionSheet style) */}
+                    {options && options.length > 0 ? (
+                        <ScrollView showsVerticalScrollIndicator={false} style={styles.optionsContainer}>
+                            {options.map((option, index) => (
+                                <TouchableOpacity
+                                    key={index}
+                                    style={[
+                                        styles.option,
+                                        index === options.length - 1 && styles.lastOption,
+                                        option.disabled && styles.disabledOption,
+                                    ]}
+                                    onPress={() => handleOptionPress(option)}
+                                    activeOpacity={0.7}
+                                    disabled={option.disabled}
+                                >
+                                    {option.icon && (
+                                        <Ionicons
+                                            name={option.icon}
+                                            size={22}
+                                            color={
+                                                option.disabled
+                                                    ? colors.mutedForeground
+                                                    : option.destructive
+                                                        ? colors.destructive
+                                                        : colors.primary
+                                            }
+                                            style={styles.optionIcon}
+                                        />
+                                    )}
+                                    <Text
+                                        style={[
+                                            styles.optionText,
+                                            option.destructive && { color: colors.destructive },
+                                            option.disabled && { color: colors.mutedForeground },
+                                        ]}
+                                    >
+                                        {option.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
                         </ScrollView>
                     ) : (
-                        children
+                        // Custom content mode
+                        scrollable ? (
+                            <ScrollView showsVerticalScrollIndicator={false}>
+                                {children}
+                            </ScrollView>
+                        ) : (
+                            children
+                        )
                     )}
                 </TouchableOpacity>
             </TouchableOpacity>
@@ -116,5 +183,37 @@ const getStyles = (colors: ColorScheme, maxHeight: DimensionValue) =>
             fontSize: 14,
             color: colors.mutedForeground,
             marginTop: 4,
+        },
+        modalMessage: {
+            fontSize: 14,
+            color: colors.mutedForeground,
+            marginTop: 8,
+            lineHeight: 20,
+        },
+        // Options styles (ActionSheet mode)
+        optionsContainer: {
+            maxHeight: 400,
+        },
+        option: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: 16,
+            paddingHorizontal: 4,
+            borderBottomWidth: 1,
+            borderBottomColor: colors.border,
+        },
+        lastOption: {
+            borderBottomWidth: 0,
+        },
+        disabledOption: {
+            opacity: 0.5,
+        },
+        optionIcon: {
+            marginRight: 12,
+        },
+        optionText: {
+            fontSize: 16,
+            color: colors.foreground,
+            flex: 1,
         },
     });

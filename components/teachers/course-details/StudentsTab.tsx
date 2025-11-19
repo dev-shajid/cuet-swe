@@ -1,18 +1,23 @@
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
 import { ColorScheme } from '@/hooks/use-theme';
-import { Student } from '@/types';
+import { Student, StudentEnrollment } from '@/types';
 import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
-import { ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
 interface StudentsTabProps {
     students: Student[];
     studentAttendancePercentages: Record<string, number>;
     searchQuery: string;
     colors: ColorScheme;
+    enrollments: StudentEnrollment[];
+    refreshing?: boolean;
     onSearchChange: (query: string) => void;
     onStudentPress: (student: Student) => void;
+    onEnrollmentPress: (enrollment: StudentEnrollment) => void;
+    onAddEnrollment: () => void;
+    onRefresh?: () => void;
     calculateStudentBestCTAverage: (studentEmail: string) => number;
 }
 
@@ -21,8 +26,13 @@ export const StudentsTab: React.FC<StudentsTabProps> = ({
     studentAttendancePercentages,
     searchQuery,
     colors,
+    enrollments,
+    refreshing = false,
     onSearchChange,
     onStudentPress,
+    onEnrollmentPress,
+    onAddEnrollment,
+    onRefresh,
     calculateStudentBestCTAverage,
 }) => {
     const styles = getStyles(colors);
@@ -36,9 +46,68 @@ export const StudentsTab: React.FC<StudentsTabProps> = ({
     });
 
     return (
-        <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+            style={styles.tabContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+                onRefresh ? (
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={colors.primary}
+                    />
+                ) : undefined
+            }
+        >
+            {/* Student ID Ranges Section */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Enrolled Students</Text>
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Student ID Ranges</Text>
+                    <TouchableOpacity onPress={onAddEnrollment} style={styles.addButton}>
+                        <Ionicons name="add-circle" size={24} color={colors.primary} />
+                    </TouchableOpacity>
+                </View>
+
+                {enrollments.length === 0 ? (
+                    <Card style={styles.emptyCard}>
+                        <Ionicons name="people-outline" size={48} color={colors.mutedForeground} />
+                        <Text style={styles.emptyText}>No student ranges added</Text>
+                        <Text style={styles.emptySubtext}>Add ID ranges to enroll students</Text>
+                    </Card>
+                ) : (
+                    enrollments.map((enrollment) => (
+                        <TouchableOpacity
+                            key={enrollment.id}
+                            onPress={() => onEnrollmentPress(enrollment)}
+                            activeOpacity={0.7}
+                        >
+                            <Card style={styles.enrollmentCard}>
+                                <View style={styles.enrollmentHeader}>
+                                    <View style={styles.enrollmentSection}>
+                                        <Text style={styles.enrollmentSectionLabel}>Section {enrollment.section}</Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward" size={20} color={colors.mutedForeground} />
+                                </View>
+                                <View style={styles.enrollmentBody}>
+                                    <View style={styles.enrollmentInfo}>
+                                        <Ionicons name="people" size={16} color={colors.primary} />
+                                        <Text style={styles.enrollmentRange}>
+                                            ID Range: {enrollment.startId} - {enrollment.endId}
+                                        </Text>
+                                    </View>
+                                    <Text style={styles.enrollmentCount}>
+                                        {enrollment.endId - enrollment.startId + 1} students
+                                    </Text>
+                                </View>
+                            </Card>
+                        </TouchableOpacity>
+                    ))
+                )}
+            </View>
+
+            {/* Enrolled Students Section */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Enrolled Students ({students.length})</Text>
 
                 {/* Search Bar */}
                 <View style={styles.searchContainer}>
@@ -129,11 +198,60 @@ const getStyles = (colors: ColorScheme) => StyleSheet.create({
     section: {
         padding: 16,
     },
+    sectionHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
     sectionTitle: {
         fontSize: 18,
         fontWeight: '600',
         color: colors.foreground,
-        marginBottom: 16,
+    },
+    addButton: {
+        padding: 4,
+    },
+    enrollmentCard: {
+        padding: 12,
+        marginBottom: 10,
+        backgroundColor: colors.card,
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
+    enrollmentHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    enrollmentSection: {
+        backgroundColor: colors.primary + '15',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 6,
+    },
+    enrollmentSectionLabel: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: colors.primary,
+    },
+    enrollmentBody: {
+        gap: 4,
+    },
+    enrollmentInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    enrollmentRange: {
+        fontSize: 14,
+        color: colors.foreground,
+        fontWeight: '500',
+    },
+    enrollmentCount: {
+        fontSize: 12,
+        color: colors.mutedForeground,
     },
     searchContainer: {
         flexDirection: 'row',
@@ -172,8 +290,8 @@ const getStyles = (colors: ColorScheme) => StyleSheet.create({
         marginTop: 4,
     },
     studentCard: {
-        padding: 16,
-        marginBottom: 12,
+        padding: 12,
+        marginBottom: 10,
         backgroundColor: colors.card,
         borderWidth: 1,
         borderColor: colors.border,
@@ -181,22 +299,22 @@ const getStyles = (colors: ColorScheme) => StyleSheet.create({
     studentHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 12,
-        paddingBottom: 12,
+        marginBottom: 10,
+        paddingBottom: 10,
         borderBottomWidth: 1,
         borderBottomColor: colors.border,
     },
     studentAvatar: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
         backgroundColor: colors.primary + '20',
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 12,
+        marginRight: 8,
     },
     studentAvatarText: {
-        fontSize: 16,
+        fontSize: 13,
         fontWeight: '600',
         color: colors.primary,
     },
@@ -204,18 +322,18 @@ const getStyles = (colors: ColorScheme) => StyleSheet.create({
         flex: 1,
     },
     studentName: {
-        fontSize: 16,
+        fontSize: 13,
         fontWeight: '600',
         color: colors.foreground,
-        marginBottom: 2,
+        marginBottom: 1,
     },
     studentId: {
-        fontSize: 13,
+        fontSize: 10,
         color: colors.mutedForeground,
     },
     studentStats: {
         flexDirection: 'row',
-        gap: 16,
+        gap: 12,
     },
     studentStat: {
         flex: 1,
@@ -223,15 +341,15 @@ const getStyles = (colors: ColorScheme) => StyleSheet.create({
     studentStatHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        marginBottom: 6,
+        gap: 3,
+        marginBottom: 4,
     },
     studentStatLabel: {
-        fontSize: 12,
+        fontSize: 11,
         color: colors.mutedForeground,
     },
     studentStatValue: {
-        fontSize: 18,
+        fontSize: 16,
         fontWeight: '600',
     },
 });

@@ -20,6 +20,7 @@ export interface Student extends BaseUser {
     batch: string;
     department: string;
     studentId: number;
+    section?: string; // Section identifier (e.g., 'A', 'B', 'C')
 }
 
 export interface Teacher extends BaseUser {
@@ -48,6 +49,18 @@ export interface StudentIdRange {
 }
 
 /**
+ * Form data for creating a course
+ */
+export interface CreateCourseFormData {
+    code: string; // Format: CSE-211
+    name?: string; // Optional course name
+    batch: number; // e.g., 2024
+    credit: number; // Course credit (float)
+    isSessional: boolean;
+    bestCTCount?: number; // Only if not sessional, default 3
+}
+
+/**
  * Course - Minimal Model
  * 
  * Features:
@@ -60,6 +73,7 @@ export interface Course {
     name: string;
     code: string; // System generated (6-8 chars), used for joining
     ownerEmail: string; // Teacher (email) who created course
+    credit: number; // Course credit (float)
     bestCTCount?: number; // Number of best CTs to count for final grade (default: all CTs)
     createdAt: Timestamp;
 }
@@ -104,6 +118,7 @@ export interface StudentEnrollment {
     courseId: string;
     startId: number;
     endId: number;
+    section: string; // Section identifier (e.g., 'A', 'B', 'C')
     addedBy: string; // Teacher who added this range
     createdAt: Timestamp;
 }
@@ -147,6 +162,7 @@ export interface StudentStatusMap {
 export interface AttendanceSession {
     id: string;
     courseId: string;
+    section: string; // Section identifier (e.g., 'A', 'B', 'C')
     date: Timestamp;
     teacherId: string;
     studentStatuses: StudentStatusMap;
@@ -191,10 +207,6 @@ export interface Mark {
 // ========================================================================
 // 7. FORM DATA TYPES
 // ========================================================================
-
-export interface CreateCourseFormData {
-    name: string;
-}
 
 export interface InviteTeacherFormData {
     teacherEmail: string;

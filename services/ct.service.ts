@@ -169,6 +169,46 @@ export const publishClassTest = async (
     }
 };
 
+/**
+ * Delete a class test and all its marks
+ * @param ctId - The class test ID
+ */
+export const deleteClassTest = async (
+    ctId: string
+): Promise<boolean> => {
+    try {
+        if (!ctId) {
+            console.error('❌ Missing ctId');
+            return false;
+        }
+
+        // Use batch to delete CT and all marks
+        const batch = writeBatch(db);
+
+        // Delete CT document
+        const ctRef = doc(db, 'classTests', ctId);
+        batch.delete(ctRef);
+
+        // Delete all marks for this CT
+        const marksQuery = query(
+            collection(db, 'classTests', ctId, 'marks')
+        );
+        const marksSnap = await getDocs(marksQuery);
+        marksSnap.docs.forEach((doc) => {
+            batch.delete(doc.ref);
+        });
+
+        // Commit the batch
+        await batch.commit();
+
+        console.log(`✅ Class test ${ctId} deleted successfully`);
+        return true;
+    } catch (error) {
+        console.error('❌ Error deleting class test:', error);
+        return false;
+    }
+};
+
 // ========================================================================
 // 2. MARKS MANAGEMENT
 // ========================================================================
